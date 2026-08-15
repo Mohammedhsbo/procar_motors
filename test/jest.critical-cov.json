@@ -1,0 +1,36 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testMatch": [
+    "<rootDir>/src/modules/inventory/**/*.spec.ts",
+    "<rootDir>/src/modules/invoices/**/*.spec.ts",
+    "<rootDir>/src/modules/vehicle-visits/**/*.spec.ts",
+    "<rootDir>/test/inventory.e2e-spec.ts",
+    "<rootDir>/test/finance.e2e-spec.ts",
+    "<rootDir>/test/visits.e2e-spec.ts",
+    "<rootDir>/test/quotations.e2e-spec.ts",
+    "<rootDir>/test/work-orders.e2e-spec.ts",
+    "<rootDir>/test/quality-control.e2e-spec.ts",
+    "<rootDir>/test/phase19-hardening.e2e-spec.ts"
+  ],
+  "maxWorkers": 1,
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "collectCoverageFrom": [
+    "src/modules/inventory/**/*.service.ts",
+    "src/modules/invoices/**/*.service.ts",
+    "src/modules/payments/**/*.service.ts",
+    "src/modules/vehicle-visits/**/*.service.ts"
+  ],
+  "coverageDirectory": "<rootDir>/coverage/critical",
+  "coverageThreshold": {
+    "global": {
+      "statements": 80,
+      "lines": 80,
+      "functions": 60,
+      "branches": 50
+    }
+  }
+}

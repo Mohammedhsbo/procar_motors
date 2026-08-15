@@ -1,0 +1,1696 @@
+// Pro Motors — Prisma schema (multi-schema PostgreSQL)
+// Conventions (OQ-07): API nameEn/nameAr ↔ DB name_en/name_ar
+// See docs/BACKEND_ARCHITECTURE.md §7
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["core", "promotors", "inventory", "purchasing", "finance", "ops", "uxp", "tireszone", "daily_cafe"]
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum UserType {
+  staff
+  customer
+
+  @@schema("core")
+}
+
+enum UserStatus {
+  active
+  suspended
+  invited
+
+  @@schema("core")
+}
+
+enum CustomerStatus {
+  vip
+  active
+  inactive
+
+  @@schema("core")
+}
+
+enum VisitStatus {
+  waiting
+  inspection
+  waitingApproval
+  readyForRepair
+  inProgress
+  waitingParts
+  qualityCheck
+  readyForDelivery
+  completed
+
+  @@schema("promotors")
+}
+
+enum Priority {
+  low
+  normal
+  high
+  urgent
+
+  @@schema("promotors")
+}
+
+enum FuelType {
+  petrol
+  diesel
+  hybrid
+  electric
+
+  @@schema("promotors")
+}
+
+enum TransmissionType {
+  auto
+  manual
+
+  @@schema("promotors")
+}
+
+enum InspectionResultState {
+  ok
+  warning
+  failed
+
+  @@schema("promotors")
+}
+
+enum InspectionStatus {
+  draft
+  in_progress
+  completed
+
+  @@schema("promotors")
+}
+
+enum WorkOrderStatus {
+  draft
+  assigned
+  in_progress
+  paused
+  waiting_parts
+  qc
+  completed
+  cancelled
+
+  @@schema("promotors")
+}
+
+enum TechnicianTaskStatus {
+  pending
+  assigned
+  in_progress
+  paused
+  completed
+  blocked
+
+  @@schema("promotors")
+}
+
+enum QualityCheckStatus {
+  pending
+  passed
+  failed
+
+  @@schema("promotors")
+}
+
+enum InventoryTxnType {
+  purchase_in
+  issue
+  return
+  adjustment
+  transfer_out
+  transfer_in
+  consume
+
+  @@schema("inventory")
+}
+
+enum ReservationStatus {
+  active
+  released
+  consumed
+  cancelled
+
+  @@schema("inventory")
+}
+
+enum StockAlertLevel {
+  low
+  out
+
+  @@schema("inventory")
+}
+
+enum StockAlertStatus {
+  open
+  acknowledged
+  closed
+
+  @@schema("inventory")
+}
+
+enum SupplierStatus {
+  active
+  hold
+  inactive
+
+  @@schema("purchasing")
+}
+
+enum PurchaseRequestStatus {
+  draft
+  pending_approval
+  approved
+  ordered
+  received
+  cancelled
+
+  @@schema("purchasing")
+}
+
+enum PurchaseOrderStatus {
+  new
+  pending_approval
+  approved
+  partially_received
+  received
+  cancelled
+
+  @@schema("purchasing")
+}
+
+enum QuotationStatus {
+  draft
+  sent
+  pending
+  approved
+  rejected
+  expired
+  superseded
+
+  @@schema("finance")
+}
+
+enum QuotationItemKind {
+  labor
+  service
+  part
+  diagnostics
+  other
+
+  @@schema("finance")
+}
+
+enum ApprovalActorType {
+  customer
+  staff
+
+  @@schema("finance")
+}
+
+enum ApprovalDecision {
+  approve
+  reject
+  request_changes
+
+  @@schema("finance")
+}
+
+enum InvoiceStatus {
+  draft
+  issued
+  partial
+  paid
+  cancelled
+
+  @@schema("finance")
+}
+
+enum PaymentMethod {
+  cash
+  card
+  visa
+  bank_transfer
+  wallet
+  other
+
+  @@schema("finance")
+}
+
+enum PaymentStatus {
+  pending
+  confirmed
+  failed
+  refunded
+
+  @@schema("finance")
+}
+
+enum AttachmentKind {
+  photo
+  video
+  document
+  pdf
+
+  @@schema("ops")
+}
+
+enum AttachmentPhase {
+  before
+  during
+  after
+  other
+
+  @@schema("ops")
+}
+
+enum OutboxStatus {
+  pending
+  published
+  failed
+
+  @@schema("ops")
+}
+
+enum SyncOpStatus {
+  pending
+  applied
+  conflict
+  failed
+
+  @@schema("ops")
+}
+
+// ─────────────────────────────────────────────
+// CORE
+// ─────────────────────────────────────────────
+
+model Organization {
+  id          String    @id @default(uuid()) @db.Uuid
+  nameEn      String    @map("name_en")
+  nameAr      String    @map("name_ar")
+  taxId       String?   @map("tax_id")
+  phone       String?
+  email       String?
+  logoFileId  String?   @map("logo_file_id") @db.Uuid
+  status      String    @default("active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  branches        Branch[]
+  departments     Department[]
+  users           User[]
+  employees       Employee[]
+  roles           Role[]
+  customers       Customer[]
+  systemSettings  SystemSetting[]
+  auditLogs       AuditLog[]
+  vehicles        Vehicle[]
+  services        Service[]
+  parts           Part[]
+  partCategories  PartCategory[]
+  suppliers       Supplier[]
+  taxRates        TaxRate[]
+
+  @@map("organizations")
+  @@schema("core")
+}
+
+model Branch {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  code           String
+  nameEn         String    @map("name_en")
+  nameAr         String    @map("name_ar")
+  address        String?
+  phone          String?
+  timezone       String    @default("Africa/Cairo")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  departments  Department[]
+  employees    Employee[]
+  userRoles    UserRole[]
+  userBranches UserBranchAccess[]
+  warehouses   Warehouse[]
+  visits       VehicleVisit[]
+  preferredBy  Customer[] @relation("PreferredBranch")
+
+  @@unique([organizationId, code])
+  @@map("branches")
+  @@schema("core")
+}
+
+model Department {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  branchId       String?   @map("branch_id") @db.Uuid
+  code           String
+  nameEn         String    @map("name_en")
+  nameAr         String    @map("name_ar")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  branch       Branch?      @relation(fields: [branchId], references: [id])
+  employees    Employee[]
+
+  @@map("departments")
+  @@schema("core")
+}
+
+model Employee {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  branchId       String    @map("branch_id") @db.Uuid
+  departmentId   String?   @map("department_id") @db.Uuid
+  code           String?
+  nameEn         String    @map("name_en")
+  nameAr         String    @map("name_ar")
+  phone          String?
+  jobTitle       String?   @map("job_title")
+  hireDate       DateTime? @map("hire_date") @db.Date
+  status         String    @default("active")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  department   Department?  @relation(fields: [departmentId], references: [id])
+  user         User?
+
+  @@map("employees")
+  @@schema("core")
+}
+
+model User {
+  id               String     @id @default(uuid()) @db.Uuid
+  organizationId   String     @map("organization_id") @db.Uuid
+  employeeId       String?    @unique @map("employee_id") @db.Uuid
+  customerId       String?    @unique @map("customer_id") @db.Uuid
+  email            String?
+  username         String?
+  passwordHash     String     @map("password_hash")
+  userType         UserType   @map("user_type")
+  status           UserStatus @default(active)
+  locale           String     @default("en")
+  failedLoginCount Int        @default(0) @map("failed_login_count")
+  lockedUntil      DateTime?  @map("locked_until") @db.Timestamptz(6)
+  lastLoginAt      DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?  @map("deleted_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id])
+  employee      Employee?          @relation(fields: [employeeId], references: [id])
+  customer      Customer?          @relation(fields: [customerId], references: [id])
+  roles         UserRole[]
+  branches      UserBranchAccess[]
+  refreshTokens RefreshToken[]
+  notifications Notification[]
+
+  @@unique([organizationId, email])
+  @@map("users")
+  @@schema("core")
+}
+
+model Role {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  key            String
+  nameEn         String    @map("name_en")
+  nameAr         String    @map("name_ar")
+  isSystem       Boolean   @default(false) @map("is_system")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  permissions  RolePermission[]
+  users        UserRole[]
+
+  @@unique([organizationId, key])
+  @@map("roles")
+  @@schema("core")
+}
+
+model Permission {
+  id          String @id @default(uuid()) @db.Uuid
+  key         String @unique
+  resource    String
+  action      String
+  description String?
+
+  roles RolePermission[]
+
+  @@map("permissions")
+  @@schema("core")
+}
+
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+  @@schema("core")
+}
+
+model UserRole {
+  userId   String  @map("user_id") @db.Uuid
+  roleId   String  @map("role_id") @db.Uuid
+  branchId String? @map("branch_id") @db.Uuid
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+  @@schema("core")
+}
+
+model UserBranchAccess {
+  userId   String @map("user_id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@id([userId, branchId])
+  @@map("user_branch_access")
+  @@schema("core")
+}
+
+model Customer {
+  id                 String         @id @default(uuid()) @db.Uuid
+  organizationId     String         @map("organization_id") @db.Uuid
+  code               String?
+  nameEn             String         @map("name_en")
+  nameAr             String         @map("name_ar")
+  phone              String
+  whatsapp           String?
+  email              String?
+  status             CustomerStatus @default(active)
+  notes              String?
+  preferredBranchId  String?        @map("preferred_branch_id") @db.Uuid
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy          String?        @map("created_by") @db.Uuid
+  updatedBy          String?        @map("updated_by") @db.Uuid
+  deletedAt          DateTime?      @map("deleted_at") @db.Timestamptz(6)
+
+  organization    Organization  @relation(fields: [organizationId], references: [id])
+  preferredBranch Branch?       @relation("PreferredBranch", fields: [preferredBranchId], references: [id])
+  user            User?
+  vehicles        Vehicle[]
+  visits          VehicleVisit[]
+  quotations      Quotation[]
+  invoices        Invoice[]
+  uxpProfile      UxpProfile?
+  cafeOrders      CafeOrder[]
+  tireOrders      TireOrder[]
+
+  @@unique([organizationId, phone])
+  @@index([nameEn])
+  @@index([nameAr])
+  @@map("customers")
+  @@schema("core")
+}
+
+model SystemSetting {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  key            String
+  value          Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, key])
+  @@map("system_settings")
+  @@schema("core")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  branchId       String?  @map("branch_id") @db.Uuid
+  actorId        String?  @map("actor_id") @db.Uuid
+  action         String
+  entity         String
+  entityId       String?  @map("entity_id")
+  before         Json?
+  after          Json?
+  metadata       Json?
+  requestId      String?  @map("request_id")
+  ip             String?
+  userAgent      String?  @map("user_agent")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([branchId, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+  @@schema("core")
+}
+
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  tokenHash    String    @map("token_hash")
+  deviceInfo   String?   @map("device_info")
+  ip           String?
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(6)
+  rotatedFrom  String?   @map("rotated_from") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+  @@schema("core")
+}
+
+// ---------------------------------------------
+// PROMOTORS
+// ---------------------------------------------
+
+model Vehicle {
+  id              String            @id @default(uuid()) @db.Uuid
+  organizationId  String            @map("organization_id") @db.Uuid
+  customerId      String            @map("customer_id") @db.Uuid
+  plate           String
+  plateNormalized String            @map("plate_normalized")
+  vin             String?
+  engineNumber    String?           @map("engine_number")
+  make            String
+  model           String
+  year            Int
+  color           String?
+  fuelType        FuelType?         @map("fuel_type")
+  transmission    TransmissionType?
+  mileageCurrent  Int?              @map("mileage_current")
+  photoFileId     String?           @map("photo_file_id") @db.Uuid
+  status          String            @default("active")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy       String?           @map("created_by") @db.Uuid
+  updatedBy       String?           @map("updated_by") @db.Uuid
+  deletedAt       DateTime?         @map("deleted_at") @db.Timestamptz(6)
+
+  organization Organization   @relation(fields: [organizationId], references: [id])
+  customer     Customer       @relation(fields: [customerId], references: [id])
+  visits       VehicleVisit[]
+  warranties   Warranty[]
+  tireOrders   TireOrder[]
+
+  @@unique([organizationId, plateNormalized])
+  @@unique([organizationId, vin])
+  @@index([plateNormalized])
+  @@map("vehicles")
+  @@schema("promotors")
+}
+
+model VehicleVisit {
+  id                 String      @id @default(uuid()) @db.Uuid
+  organizationId     String      @map("organization_id") @db.Uuid
+  branchId           String      @map("branch_id") @db.Uuid
+  customerId         String      @map("customer_id") @db.Uuid
+  vehicleId          String      @map("vehicle_id") @db.Uuid
+  status             VisitStatus @default(waiting)
+  priority           Priority    @default(normal)
+  advisorId          String?     @map("advisor_id") @db.Uuid
+  mileageIn          Int?        @map("mileage_in")
+  fuelLevelPct       Int?        @map("fuel_level_pct")
+  exteriorCondition  String?     @map("exterior_condition")
+  complaint          String?
+  expectedDeliveryAt DateTime?   @map("expected_delivery_at") @db.Timestamptz(6)
+  progressPct        Int         @default(0) @map("progress_pct")
+  checkedInAt        DateTime    @default(now()) @map("checked_in_at") @db.Timestamptz(6)
+  completedAt        DateTime?   @map("completed_at") @db.Timestamptz(6)
+  deliveredAt        DateTime?   @map("delivered_at") @db.Timestamptz(6)
+  notes              String?
+  version            Int         @default(1)
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy          String?     @map("created_by") @db.Uuid
+  updatedBy          String?     @map("updated_by") @db.Uuid
+  deletedAt          DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  branch        Branch              @relation(fields: [branchId], references: [id])
+  customer      Customer            @relation(fields: [customerId], references: [id])
+  vehicle       Vehicle             @relation(fields: [vehicleId], references: [id])
+  jobTicket     JobTicket?
+  damagePoints  VisitDamagePoint[]
+  inspections   Inspection[]
+  workOrders    WorkOrder[]
+  quotations    Quotation[]
+  invoices      Invoice[]
+  qualityChecks QualityCheck[]
+  reservations  StockReservation[]
+  cafeOrders    CafeOrder[]
+  tireOrders    TireOrder[]
+
+  @@index([branchId, status])
+  @@index([branchId, checkedInAt])
+  @@index([vehicleId])
+  @@map("vehicle_visits")
+  @@schema("promotors")
+}
+
+model VisitDamagePoint {
+  id       String  @id @default(uuid()) @db.Uuid
+  visitId  String  @map("visit_id") @db.Uuid
+  xPct     Decimal @map("x_pct") @db.Decimal(5, 2)
+  yPct     Decimal @map("y_pct") @db.Decimal(5, 2)
+  labelEn  String  @map("label_en")
+  labelAr  String  @map("label_ar")
+  severity String?
+
+  visit VehicleVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  @@map("visit_damage_points")
+  @@schema("promotors")
+}
+
+model JobTicket {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  branchId       String   @map("branch_id") @db.Uuid
+  visitId        String   @unique @map("visit_id") @db.Uuid
+  number         String
+  advisorId      String?  @map("advisor_id") @db.Uuid
+  status         String   @default("open")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by") @db.Uuid
+
+  visit      VehicleVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  workOrders WorkOrder[]
+  quotations Quotation[]
+
+  @@unique([organizationId, number])
+  @@map("job_tickets")
+  @@schema("promotors")
+}
+
+model InspectionTemplate {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  code           String
+  nameEn         String   @map("name_en")
+  nameAr         String   @map("name_ar")
+  version        Int      @default(1)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  items        InspectionTemplateItem[]
+  inspections  Inspection[]
+
+  @@unique([organizationId, code, version])
+  @@map("inspection_templates")
+  @@schema("promotors")
+}
+
+model InspectionTemplateItem {
+  id                  String  @id @default(uuid()) @db.Uuid
+  templateId          String  @map("template_id") @db.Uuid
+  category            String?
+  nameEn              String  @map("name_en")
+  nameAr              String  @map("name_ar")
+  sortOrder           Int     @default(0) @map("sort_order")
+  requiresMeasurement Boolean @default(false) @map("requires_measurement")
+
+  template InspectionTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  results  InspectionResult[]
+
+  @@map("inspection_template_items")
+  @@schema("promotors")
+}
+
+model Inspection {
+  id               String            @id @default(uuid()) @db.Uuid
+  visitId          String            @map("visit_id") @db.Uuid
+  templateId       String            @map("template_id") @db.Uuid
+  templateVersion  Int               @map("template_version")
+  inspectorId      String?           @map("inspector_id") @db.Uuid
+  status           InspectionStatus  @default(draft)
+  startedAt        DateTime?         @map("started_at") @db.Timestamptz(6)
+  completedAt      DateTime?         @map("completed_at") @db.Timestamptz(6)
+  notes            String?
+  estimatedTotal   Decimal?          @map("estimated_total") @db.Decimal(14, 2)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy        String?           @map("created_by") @db.Uuid
+
+  visit     VehicleVisit           @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  template  InspectionTemplate     @relation(fields: [templateId], references: [id])
+  results   InspectionResult[]
+  findings  InspectionFinding[]
+
+  @@map("inspections")
+  @@schema("promotors")
+}
+
+model InspectionResult {
+  id              String                 @id @default(uuid()) @db.Uuid
+  inspectionId    String                 @map("inspection_id") @db.Uuid
+  templateItemId  String                 @map("template_item_id") @db.Uuid
+  state           InspectionResultState
+  note            String?
+  measurement     String?
+  photoFileIds    String[]               @default([]) @map("photo_file_ids") @db.Uuid
+
+  inspection   Inspection             @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  templateItem InspectionTemplateItem @relation(fields: [templateItemId], references: [id])
+
+  @@map("inspection_results")
+  @@schema("promotors")
+}
+
+model InspectionFinding {
+  id                     String   @id @default(uuid()) @db.Uuid
+  inspectionId           String   @map("inspection_id") @db.Uuid
+  titleEn                String   @map("title_en")
+  titleAr                String   @map("title_ar")
+  causeEn                String?  @map("cause_en")
+  causeAr                String?  @map("cause_ar")
+  severity               String?
+  recommendedActionEn    String?  @map("recommended_action_en")
+  recommendedActionAr    String?  @map("recommended_action_ar")
+  estimatedMinutes       Int?     @map("estimated_minutes")
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@map("inspection_findings")
+  @@schema("promotors")
+}
+
+model WorkshopBay {
+  id       String  @id @default(uuid()) @db.Uuid
+  branchId String  @map("branch_id") @db.Uuid
+  code     String
+  name     String
+  isActive Boolean @default(true) @map("is_active")
+
+  workOrders WorkOrder[]
+
+  @@unique([branchId, code])
+  @@map("workshop_bays")
+  @@schema("promotors")
+}
+
+model WorkOrder {
+  id                String          @id @default(uuid()) @db.Uuid
+  organizationId    String          @map("organization_id") @db.Uuid
+  branchId          String          @map("branch_id") @db.Uuid
+  visitId           String          @map("visit_id") @db.Uuid
+  jobTicketId       String          @map("job_ticket_id") @db.Uuid
+  number            String
+  status            WorkOrderStatus @default(draft)
+  priority          Priority        @default(normal)
+  technicianId      String?         @map("technician_id") @db.Uuid
+  bayId             String?         @map("bay_id") @db.Uuid
+  estimatedMinutes  Int?            @map("estimated_minutes")
+  actualMinutes     Int?            @map("actual_minutes")
+  progressPct       Int             @default(0) @map("progress_pct")
+  startedAt         DateTime?       @map("started_at") @db.Timestamptz(6)
+  completedAt       DateTime?       @map("completed_at") @db.Timestamptz(6)
+  parentWorkOrderId String?         @map("parent_work_order_id") @db.Uuid
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy         String?         @map("created_by") @db.Uuid
+
+  visit           VehicleVisit      @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  jobTicket       JobTicket         @relation(fields: [jobTicketId], references: [id])
+  bay             WorkshopBay?      @relation(fields: [bayId], references: [id])
+  parent          WorkOrder?        @relation("WoTree", fields: [parentWorkOrderId], references: [id])
+  children        WorkOrder[]       @relation("WoTree")
+  tasks           TechnicianTask[]
+  qualityChecks   QualityCheck[]
+  reservations    StockReservation[]
+  warranties      Warranty[]
+  invoices        Invoice[]
+  tireOrders      TireOrder[]
+
+  @@unique([organizationId, number])
+  @@index([branchId, status])
+  @@index([technicianId])
+  @@map("work_orders")
+  @@schema("promotors")
+}
+
+model TechnicianTask {
+  id               String               @id @default(uuid()) @db.Uuid
+  workOrderId      String               @map("work_order_id") @db.Uuid
+  assigneeId       String?              @map("assignee_id") @db.Uuid
+  title            String
+  status           TechnicianTaskStatus @default(pending)
+  priority         Priority             @default(normal)
+  estimatedMinutes Int?                 @map("estimated_minutes")
+  elapsedSeconds   Int                  @default(0) @map("elapsed_seconds")
+  startedAt        DateTime?            @map("started_at") @db.Timestamptz(6)
+  pausedAt         DateTime?            @map("paused_at") @db.Timestamptz(6)
+  completedAt      DateTime?            @map("completed_at") @db.Timestamptz(6)
+  blockedReason    String?              @map("blocked_reason")
+  sortOrder        Int                  @default(0) @map("sort_order")
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@map("technician_tasks")
+  @@schema("promotors")
+}
+
+model QualityCheck {
+  id          String             @id @default(uuid()) @db.Uuid
+  visitId     String             @map("visit_id") @db.Uuid
+  workOrderId String             @map("work_order_id") @db.Uuid
+  inspectorId String?            @map("inspector_id") @db.Uuid
+  status      QualityCheckStatus @default(pending)
+  notes       String?
+  decidedAt   DateTime?          @map("decided_at") @db.Timestamptz(6)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  visit     VehicleVisit       @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  workOrder WorkOrder          @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  items     QualityCheckItem[]
+
+  @@map("quality_checks")
+  @@schema("promotors")
+}
+
+model QualityCheckItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  qualityCheckId String  @map("quality_check_id") @db.Uuid
+  labelEn        String  @map("label_en")
+  labelAr        String  @map("label_ar")
+  passed         Boolean?
+
+  qualityCheck QualityCheck @relation(fields: [qualityCheckId], references: [id], onDelete: Cascade)
+
+  @@map("quality_check_items")
+  @@schema("promotors")
+}
+
+model Service {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  code            String
+  nameEn          String    @map("name_en")
+  nameAr          String    @map("name_ar")
+  laborPrice      Decimal   @map("labor_price") @db.Decimal(14, 2)
+  durationMinutes Int       @map("duration_minutes")
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, code])
+  @@map("services")
+  @@schema("promotors")
+}
+
+model Warranty {
+  id                String    @id @default(uuid()) @db.Uuid
+  vehicleId         String    @map("vehicle_id") @db.Uuid
+  workOrderId       String?   @map("work_order_id") @db.Uuid
+  type              String
+  description       String?
+  validUntil        DateTime? @map("valid_until") @db.Date
+  validUntilMileage Int?      @map("valid_until_mileage")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  vehicle   Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+
+  @@map("warranties")
+  @@schema("promotors")
+}
+
+// ─────────────────────────────────────────────
+// INVENTORY
+// ─────────────────────────────────────────────
+
+model Warehouse {
+  id        String   @id @default(uuid()) @db.Uuid
+  branchId  String   @map("branch_id") @db.Uuid
+  code      String
+  nameEn    String   @map("name_en")
+  nameAr    String   @map("name_ar")
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  branch       Branch                @relation(fields: [branchId], references: [id])
+  balances     StockBalance[]
+  transactions InventoryTransaction[]
+  reservations StockReservation[]
+  alerts       StockAlert[]
+
+  @@unique([branchId, code])
+  @@map("warehouses")
+  @@schema("inventory")
+}
+
+model PartCategory {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  nameEn         String  @map("name_en")
+  nameAr         String  @map("name_ar")
+  parentId       String? @map("parent_id") @db.Uuid
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  parent       PartCategory? @relation("CatTree", fields: [parentId], references: [id])
+  children     PartCategory[] @relation("CatTree")
+  parts        Part[]
+
+  @@map("part_categories")
+  @@schema("inventory")
+}
+
+model Part {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  sku            String
+  barcode        String?
+  oemNumber      String?   @map("oem_number")
+  nameEn         String    @map("name_en")
+  nameAr         String    @map("name_ar")
+  categoryId     String?   @map("category_id") @db.Uuid
+  brand          String?
+  unit           String    @default("pcs")
+  costPrice      Decimal   @map("cost_price") @db.Decimal(14, 2)
+  sellPrice      Decimal   @map("sell_price") @db.Decimal(14, 2)
+  minStock       Int       @default(0) @map("min_stock")
+  maxStock       Int?      @map("max_stock")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  category     PartCategory?          @relation(fields: [categoryId], references: [id])
+  balances     StockBalance[]
+  transactions InventoryTransaction[]
+  reservations StockReservation[]
+  alerts       StockAlert[]
+
+  @@unique([organizationId, sku])
+  @@unique([organizationId, barcode])
+  @@map("parts")
+  @@schema("inventory")
+}
+
+model StockBalance {
+  id          String   @id @default(uuid()) @db.Uuid
+  warehouseId String   @map("warehouse_id") @db.Uuid
+  partId      String   @map("part_id") @db.Uuid
+  onHand      Decimal  @default(0) @map("on_hand") @db.Decimal(14, 3)
+  reserved    Decimal  @default(0) @db.Decimal(14, 3)
+  binLocation String?  @map("bin_location")
+  version     Int      @default(1)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  part      Part      @relation(fields: [partId], references: [id])
+
+  @@unique([warehouseId, partId])
+  @@map("stock_balances")
+  @@schema("inventory")
+}
+
+model InventoryTransaction {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  branchId       String           @map("branch_id") @db.Uuid
+  warehouseId    String           @map("warehouse_id") @db.Uuid
+  partId         String           @map("part_id") @db.Uuid
+  type           InventoryTxnType
+  qty            Decimal          @db.Decimal(14, 3)
+  unitCost       Decimal?         @map("unit_cost") @db.Decimal(14, 2)
+  referenceType  String?          @map("reference_type")
+  referenceId    String?          @map("reference_id") @db.Uuid
+  notes          String?
+  createdBy      String?          @map("created_by") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  part      Part      @relation(fields: [partId], references: [id])
+
+  @@index([partId, createdAt])
+  @@index([branchId, createdAt])
+  @@map("inventory_transactions")
+  @@schema("inventory")
+}
+
+model StockReservation {
+  id           String            @id @default(uuid()) @db.Uuid
+  warehouseId  String            @map("warehouse_id") @db.Uuid
+  partId       String            @map("part_id") @db.Uuid
+  workOrderId  String            @map("work_order_id") @db.Uuid
+  visitId      String            @map("visit_id") @db.Uuid
+  qty          Decimal           @db.Decimal(14, 3)
+  qtyConsumed  Decimal           @default(0) @map("qty_consumed") @db.Decimal(14, 3)
+  status       ReservationStatus @default(active)
+  createdBy    String?           @map("created_by") @db.Uuid
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  warehouse Warehouse    @relation(fields: [warehouseId], references: [id])
+  part      Part         @relation(fields: [partId], references: [id])
+  workOrder WorkOrder    @relation(fields: [workOrderId], references: [id])
+  visit     VehicleVisit @relation(fields: [visitId], references: [id])
+
+  @@map("stock_reservations")
+  @@schema("inventory")
+}
+
+model StockAlert {
+  id          String           @id @default(uuid()) @db.Uuid
+  branchId    String           @map("branch_id") @db.Uuid
+  warehouseId String           @map("warehouse_id") @db.Uuid
+  partId      String           @map("part_id") @db.Uuid
+  level       StockAlertLevel
+  status      StockAlertStatus @default(open)
+  openedAt    DateTime         @default(now()) @map("opened_at") @db.Timestamptz(6)
+  closedAt    DateTime?        @map("closed_at") @db.Timestamptz(6)
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  part      Part      @relation(fields: [partId], references: [id])
+
+  @@map("stock_alerts")
+  @@schema("inventory")
+}
+
+// ─────────────────────────────────────────────
+// PURCHASING
+// ─────────────────────────────────────────────
+
+model Supplier {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  nameEn         String         @map("name_en")
+  nameAr         String         @map("name_ar")
+  phone          String?
+  email          String?
+  taxId          String?        @map("tax_id")
+  rating         Decimal?       @db.Decimal(3, 2)
+  balance        Decimal        @default(0) @db.Decimal(14, 2)
+  status         SupplierStatus @default(active)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?      @map("deleted_at") @db.Timestamptz(6)
+
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  purchaseOrders PurchaseOrder[]
+
+  @@map("suppliers")
+  @@schema("purchasing")
+}
+
+model PurchaseRequest {
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  branchId       String                @map("branch_id") @db.Uuid
+  number         String
+  requestedBy    String?               @map("requested_by") @db.Uuid
+  status         PurchaseRequestStatus @default(draft)
+  reason         String?
+  quotationId    String?               @map("quotation_id") @db.Uuid
+  visitId        String?               @map("visit_id") @db.Uuid
+  workOrderId    String?               @map("work_order_id") @db.Uuid
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  items          PurchaseRequestItem[]
+  purchaseOrders PurchaseOrder[]
+
+  @@unique([organizationId, number])
+  @@index([branchId, status])
+  @@index([quotationId])
+  @@map("purchase_requests")
+  @@schema("purchasing")
+}
+
+model PurchaseRequestItem {
+  id      String  @id @default(uuid()) @db.Uuid
+  prId    String  @map("pr_id") @db.Uuid
+  partId  String  @map("part_id") @db.Uuid
+  qty     Decimal @db.Decimal(14, 3)
+  notes   String?
+
+  purchaseRequest PurchaseRequest @relation(fields: [prId], references: [id], onDelete: Cascade)
+
+  @@map("purchase_request_items")
+  @@schema("purchasing")
+}
+
+model PurchaseOrder {
+  id                String              @id @default(uuid()) @db.Uuid
+  organizationId    String              @map("organization_id") @db.Uuid
+  branchId          String              @map("branch_id") @db.Uuid
+  supplierId        String              @map("supplier_id") @db.Uuid
+  purchaseRequestId String?             @map("purchase_request_id") @db.Uuid
+  number            String
+  status            PurchaseOrderStatus @default(new)
+  subtotal          Decimal             @default(0) @db.Decimal(14, 2)
+  tax               Decimal             @default(0) @db.Decimal(14, 2)
+  discount          Decimal             @default(0) @db.Decimal(14, 2)
+  total             Decimal             @default(0) @db.Decimal(14, 2)
+  notes             String?
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy         String?             @map("created_by") @db.Uuid
+
+  supplier        Supplier            @relation(fields: [supplierId], references: [id])
+  purchaseRequest PurchaseRequest?    @relation(fields: [purchaseRequestId], references: [id])
+  items           PurchaseOrderItem[]
+  goodsReceipts   GoodsReceipt[]
+
+  @@unique([organizationId, number])
+  @@index([branchId, status])
+  @@index([purchaseRequestId])
+  @@map("purchase_orders")
+  @@schema("purchasing")
+}
+
+model PurchaseOrderItem {
+  id          String  @id @default(uuid()) @db.Uuid
+  poId        String  @map("po_id") @db.Uuid
+  partId      String  @map("part_id") @db.Uuid
+  qtyOrdered  Decimal @map("qty_ordered") @db.Decimal(14, 3)
+  qtyReceived Decimal @default(0) @map("qty_received") @db.Decimal(14, 3)
+  unitPrice   Decimal @map("unit_price") @db.Decimal(14, 2)
+  taxRate     Decimal @default(0) @map("tax_rate") @db.Decimal(5, 2)
+
+  purchaseOrder PurchaseOrder       @relation(fields: [poId], references: [id], onDelete: Cascade)
+  receiptItems  GoodsReceiptItem[]
+
+  @@map("purchase_order_items")
+  @@schema("purchasing")
+}
+
+model GoodsReceipt {
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  poId               String    @map("po_id") @db.Uuid
+  branchId           String    @map("branch_id") @db.Uuid
+  warehouseId        String    @map("warehouse_id") @db.Uuid
+  number             String
+  status             String    @default("draft")
+  receivedBy         String?   @map("received_by") @db.Uuid
+  receivedAt         DateTime? @map("received_at") @db.Timestamptz(6)
+  supplierInvoiceRef String?   @map("supplier_invoice_ref")
+  notes              String?
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  purchaseOrder PurchaseOrder      @relation(fields: [poId], references: [id])
+  items         GoodsReceiptItem[]
+
+  @@unique([organizationId, number])
+  @@index([branchId, status])
+  @@map("goods_receipts")
+  @@schema("purchasing")
+}
+
+model GoodsReceiptItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  grnId          String  @map("grn_id") @db.Uuid
+  poItemId       String  @map("po_item_id") @db.Uuid
+  qtyReceived    Decimal @map("qty_received") @db.Decimal(14, 3)
+  qtyRejected    Decimal @default(0) @map("qty_rejected") @db.Decimal(14, 3)
+  unitCostActual Decimal? @map("unit_cost_actual") @db.Decimal(14, 2)
+
+  goodsReceipt      GoodsReceipt      @relation(fields: [grnId], references: [id], onDelete: Cascade)
+  purchaseOrderItem PurchaseOrderItem @relation(fields: [poItemId], references: [id])
+
+  @@map("goods_receipt_items")
+  @@schema("purchasing")
+}
+
+// ─────────────────────────────────────────────
+// FINANCE
+// ─────────────────────────────────────────────
+
+model TaxRate {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String
+  rate           Decimal   @db.Decimal(5, 2)
+  isDefault      Boolean   @default(false) @map("is_default")
+  effectiveFrom  DateTime  @map("effective_from") @db.Date
+  effectiveTo    DateTime? @map("effective_to") @db.Date
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("tax_rates")
+  @@schema("finance")
+}
+
+model Quotation {
+  id                String          @id @default(uuid()) @db.Uuid
+  organizationId    String          @map("organization_id") @db.Uuid
+  branchId          String          @map("branch_id") @db.Uuid
+  visitId           String          @map("visit_id") @db.Uuid
+  jobTicketId       String?         @map("job_ticket_id") @db.Uuid
+  customerId        String          @map("customer_id") @db.Uuid
+  vehicleId         String?         @map("vehicle_id") @db.Uuid
+  number            String
+  version           Int             @default(1)
+  parentQuotationId String?         @map("parent_quotation_id") @db.Uuid
+  status            QuotationStatus @default(draft)
+  subtotal          Decimal         @default(0) @db.Decimal(14, 2)
+  discount          Decimal         @default(0) @db.Decimal(14, 2)
+  tax               Decimal         @default(0) @db.Decimal(14, 2)
+  total             Decimal         @default(0) @db.Decimal(14, 2)
+  estimatedMinutes  Int?            @map("estimated_minutes")
+  validUntil        DateTime?       @map("valid_until") @db.Timestamptz(6)
+  sentAt            DateTime?       @map("sent_at") @db.Timestamptz(6)
+  decidedAt         DateTime?       @map("decided_at") @db.Timestamptz(6)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy         String?         @map("created_by") @db.Uuid
+
+  visit      VehicleVisit         @relation(fields: [visitId], references: [id])
+  jobTicket  JobTicket?           @relation(fields: [jobTicketId], references: [id])
+  customer   Customer             @relation(fields: [customerId], references: [id])
+  parent     Quotation?           @relation("QuoteVersions", fields: [parentQuotationId], references: [id])
+  children   Quotation[]          @relation("QuoteVersions")
+  items      QuotationItem[]
+  approvals  QuotationApproval[]
+  invoices   Invoice[]
+
+  @@unique([organizationId, number, version])
+  @@map("quotations")
+  @@schema("finance")
+}
+
+model QuotationItem {
+  id          String            @id @default(uuid()) @db.Uuid
+  quotationId String            @map("quotation_id") @db.Uuid
+  kind        QuotationItemKind
+  partId      String?           @map("part_id") @db.Uuid
+  serviceId   String?           @map("service_id") @db.Uuid
+  nameEn      String            @map("name_en")
+  nameAr      String            @map("name_ar")
+  qty         Decimal           @db.Decimal(14, 3)
+  unitPrice   Decimal           @map("unit_price") @db.Decimal(14, 2)
+  lineTotal   Decimal           @map("line_total") @db.Decimal(14, 2)
+  sortOrder   Int               @default(0) @map("sort_order")
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@map("quotation_items")
+  @@schema("finance")
+}
+
+model QuotationApproval {
+  id          String            @id @default(uuid()) @db.Uuid
+  quotationId String            @map("quotation_id") @db.Uuid
+  actorType   ApprovalActorType @map("actor_type")
+  actorId     String?           @map("actor_id") @db.Uuid
+  decision    ApprovalDecision
+  comment     String?
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@map("quotation_approvals")
+  @@schema("finance")
+}
+
+model Invoice {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  branchId       String        @map("branch_id") @db.Uuid
+  visitId        String?       @map("visit_id") @db.Uuid
+  jobTicketId    String?       @map("job_ticket_id") @db.Uuid
+  workOrderId    String?       @map("work_order_id") @db.Uuid
+  quotationId    String?       @map("quotation_id") @db.Uuid
+  customerId     String        @map("customer_id") @db.Uuid
+  number         String
+  status         InvoiceStatus @default(draft)
+  subtotal       Decimal       @default(0) @db.Decimal(14, 2)
+  discount       Decimal       @default(0) @db.Decimal(14, 2)
+  tax            Decimal       @default(0) @db.Decimal(14, 2)
+  total          Decimal       @default(0) @db.Decimal(14, 2)
+  amountPaid     Decimal       @default(0) @map("amount_paid") @db.Decimal(14, 2)
+  issuedAt       DateTime?     @map("issued_at") @db.Timestamptz(6)
+  dueAt          DateTime?     @map("due_at") @db.Timestamptz(6)
+  cancelledAt    DateTime?     @map("cancelled_at") @db.Timestamptz(6)
+  cancelReason   String?       @map("cancel_reason")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?       @map("created_by") @db.Uuid
+
+  visit     VehicleVisit? @relation(fields: [visitId], references: [id])
+  workOrder WorkOrder?    @relation(fields: [workOrderId], references: [id])
+  quotation Quotation?    @relation(fields: [quotationId], references: [id])
+  customer  Customer      @relation(fields: [customerId], references: [id])
+  items     InvoiceItem[]
+  payments  Payment[]
+  refunds   Refund[]
+
+  @@unique([organizationId, number])
+  @@index([branchId, status])
+  @@map("invoices")
+  @@schema("finance")
+}
+
+model InvoiceItem {
+  id        String  @id @default(uuid()) @db.Uuid
+  invoiceId String  @map("invoice_id") @db.Uuid
+  kind      String
+  nameEn    String  @map("name_en")
+  nameAr    String  @map("name_ar")
+  qty       Decimal @db.Decimal(14, 3)
+  unitPrice Decimal @map("unit_price") @db.Decimal(14, 2)
+  lineTotal Decimal @map("line_total") @db.Decimal(14, 2)
+  sortOrder Int     @default(0) @map("sort_order")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_items")
+  @@schema("finance")
+}
+
+model Payment {
+  id         String        @id @default(uuid()) @db.Uuid
+  invoiceId  String        @map("invoice_id") @db.Uuid
+  branchId   String        @map("branch_id") @db.Uuid
+  number     String
+  amount     Decimal       @db.Decimal(14, 2)
+  method     PaymentMethod
+  status     PaymentStatus @default(pending)
+  receivedBy String?       @map("received_by") @db.Uuid
+  paidAt     DateTime?     @map("paid_at") @db.Timestamptz(6)
+  reference  String?
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id])
+  refunds Refund[]
+
+  @@unique([branchId, number])
+  @@index([paidAt])
+  @@map("payments")
+  @@schema("finance")
+}
+
+model Refund {
+  id         String   @id @default(uuid()) @db.Uuid
+  paymentId  String   @map("payment_id") @db.Uuid
+  invoiceId  String   @map("invoice_id") @db.Uuid
+  amount     Decimal  @db.Decimal(14, 2)
+  reason     String?
+  approvedBy String?  @map("approved_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("refunds")
+  @@schema("finance")
+}
+
+model Expense {
+  id          String   @id @default(uuid()) @db.Uuid
+  branchId    String   @map("branch_id") @db.Uuid
+  category    String
+  amount      Decimal  @db.Decimal(14, 2)
+  expenseDate DateTime @map("expense_date") @db.Date
+  status      String   @default("confirmed")
+  notes       String?
+  createdBy   String?  @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("expenses")
+  @@schema("finance")
+}
+
+// ─────────────────────────────────────────────
+// OPS
+// ─────────────────────────────────────────────
+
+model StoredFile {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  key            String
+  filename       String
+  mime           String
+  size           Int
+  status         String    @default("pending")
+  uploadedBy     String?   @map("uploaded_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  confirmedAt    DateTime? @map("confirmed_at") @db.Timestamptz(6)
+
+  @@unique([organizationId, key])
+  @@index([organizationId, status])
+  @@map("files")
+  @@schema("ops")
+}
+
+model Attachment {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  entityType     String          @map("entity_type")
+  entityId       String          @map("entity_id") @db.Uuid
+  fileKey        String          @map("file_key")
+  mime           String
+  size           Int
+  kind           AttachmentKind
+  phase          AttachmentPhase @default(other)
+  uploadedBy     String?         @map("uploaded_by") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([entityType, entityId])
+  @@map("attachments")
+  @@schema("ops")
+}
+
+model PortalFeedback {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  customerId     String   @map("customer_id") @db.Uuid
+  visitId        String?  @map("visit_id") @db.Uuid
+  rating         Int?
+  comment        String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([customerId, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("portal_feedback")
+  @@schema("ops")
+}
+
+model Notification {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  category   String
+  titleEn    String    @map("title_en")
+  titleAr    String    @map("title_ar")
+  bodyEn     String?   @map("body_en")
+  bodyAr     String?   @map("body_ar")
+  entityType String?   @map("entity_type")
+  entityId   String?   @map("entity_id") @db.Uuid
+  readAt     DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+  @@schema("ops")
+}
+
+model NotificationPreference {
+  id       String  @id @default(uuid()) @db.Uuid
+  userId   String  @map("user_id") @db.Uuid
+  channel  String
+  eventKey String  @map("event_key")
+  enabled  Boolean @default(true)
+
+  @@unique([userId, channel, eventKey])
+  @@map("notification_preferences")
+  @@schema("ops")
+}
+
+model OpsTask {
+  id         String    @id @default(uuid()) @db.Uuid
+  branchId   String    @map("branch_id") @db.Uuid
+  assigneeId String?   @map("assignee_id") @db.Uuid
+  type       String
+  entityType String?   @map("entity_type")
+  entityId   String?   @map("entity_id") @db.Uuid
+  title      String
+  priority   Priority  @default(normal)
+  dueAt      DateTime? @map("due_at") @db.Timestamptz(6)
+  status     String    @default("pending")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("tasks")
+  @@schema("ops")
+}
+
+model IdempotencyKey {
+  id             String   @id @default(uuid()) @db.Uuid
+  key            String   @unique
+  userId         String?  @map("user_id") @db.Uuid
+  requestHash    String   @map("request_hash")
+  responseStatus Int      @map("response_status")
+  responseBody   Json     @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@map("idempotency_keys")
+  @@schema("ops")
+}
+
+model SyncOperation {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String?      @map("organization_id") @db.Uuid
+  actorId        String?      @map("actor_id") @db.Uuid
+  branchId       String?      @map("branch_id") @db.Uuid
+  clientId       String       @map("client_id")
+  operationId    String       @map("operation_id")
+  entityType     String       @map("entity_type")
+  action         String       @default("create")
+  payload        Json
+  status         SyncOpStatus @default(pending)
+  conflictInfo   Json?        @map("conflict_info")
+  result         Json?
+  serverEntityId String?      @map("server_entity_id") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  processedAt    DateTime?    @map("processed_at") @db.Timestamptz(6)
+
+  @@unique([clientId, operationId])
+  @@index([organizationId, operationId])
+  @@index([actorId, createdAt])
+  @@map("sync_operations")
+  @@schema("ops")
+}
+
+model OutboxEvent {
+  id          String       @id @default(uuid()) @db.Uuid
+  eventType   String       @map("event_type")
+  payload     Json
+  status      OutboxStatus @default(pending)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt DateTime?    @map("published_at") @db.Timestamptz(6)
+  retryCount  Int          @default(0) @map("retry_count")
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+  @@schema("ops")
+}
+
+// ─────────────────────────────────────────────
+// ECOSYSTEM STUBS
+// ─────────────────────────────────────────────
+
+model UxpProfile {
+  id         String   @id @default(uuid()) @db.Uuid
+  customerId String   @unique @map("customer_id") @db.Uuid
+  loyaltyPts Int      @default(0) @map("loyalty_pts")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@map("profiles")
+  @@schema("uxp")
+}
+
+model TireProduct {
+  id        String   @id @default(uuid()) @db.Uuid
+  sku       String   @unique
+  nameEn    String   @map("name_en")
+  nameAr    String   @map("name_ar")
+  size      String?
+  brand     String?
+  partId    String?  @map("part_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  orders TireOrder[]
+
+  @@map("products")
+  @@schema("tireszone")
+}
+
+model TireOrder {
+  id          String   @id @default(uuid()) @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  customerId  String?  @map("customer_id") @db.Uuid
+  vehicleId   String?  @map("vehicle_id") @db.Uuid
+  visitId     String?  @map("visit_id") @db.Uuid
+  workOrderId String?  @map("work_order_id") @db.Uuid
+  qty         Int      @default(1)
+  status      String   @default("draft")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product   TireProduct  @relation(fields: [productId], references: [id])
+  customer  Customer?    @relation(fields: [customerId], references: [id])
+  vehicle   Vehicle?     @relation(fields: [vehicleId], references: [id])
+  visit     VehicleVisit? @relation(fields: [visitId], references: [id])
+  workOrder WorkOrder?   @relation(fields: [workOrderId], references: [id])
+
+  @@index([visitId])
+  @@index([customerId])
+  @@index([workOrderId])
+  @@map("orders")
+  @@schema("tireszone")
+}
+
+model CafeOrder {
+  id         String   @id @default(uuid()) @db.Uuid
+  branchId   String   @map("branch_id") @db.Uuid
+  customerId String?  @map("customer_id") @db.Uuid
+  visitId    String?  @map("visit_id") @db.Uuid
+  employeeId String?  @map("employee_id") @db.Uuid
+  total      Decimal  @default(0) @db.Decimal(14, 2)
+  status     String   @default("open")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  customer Customer?     @relation(fields: [customerId], references: [id])
+  visit    VehicleVisit? @relation(fields: [visitId], references: [id])
+
+  @@map("orders")
+  @@schema("daily_cafe")
+}

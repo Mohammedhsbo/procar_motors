@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+dist/
+coverage/
+.turbo/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs / OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Prisma (generated)
+# prisma/migrations kept; client is in node_modules
+
+# Test / temp
+tmp/
+uploads/
+storage/
+*.tsbuildinfo
+
+/generated/prisma
