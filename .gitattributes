@@ -1,0 +1,2 @@
+# Shell scripts must use LF so Alpine/busybox sh accepts `set -eu`
+*.sh text eol=lf

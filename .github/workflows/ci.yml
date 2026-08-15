@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  backend:
+    name: Backend lint / test / build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: promotors
+          POSTGRES_PASSWORD: promotors
+          POSTGRES_DB: pro_motors_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U promotors -d pro_motors_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      PORT: 3000
+      DATABASE_URL: postgresql://promotors:promotors@localhost:5432/pro_motors_db?schema=public
+      REDIS_URL: redis://localhost:6379
+      CORS_ORIGINS: http://localhost:5173
+      JWT_ACCESS_SECRET: ci-access-secret-change-me-32
+      JWT_REFRESH_SECRET: ci-refresh-secret-change-me-32
+      RATE_LIMIT_TTL_MS: 60000
+      RATE_LIMIT_LIMIT: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test -- --passWithNoTests
+
+      - name: Dependency audit (high+)
+        run: npm run audit:deps
+
+      - name: Refuse prisma db push
+        run: |
+          if node scripts/migrate.js db push; then
+            echo "migrate.js must refuse db push"
+            exit 1
+          fi
+
+      - name: Apply migrations (migrate deploy)
+        run: npm run migrate:deploy
+
+      - name: Seed database
+        run: npx prisma db seed
+
+      - name: E2E tests
+        run: npm run test:e2e
+
+      - name: Production build
+        run: npm run build
+
+  production-stack:
+    name: Production image / compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose config
+        run: docker compose -f docker-compose.prod.yml --env-file .env.production.example config
+
+      - name: Build production images
+        run: docker compose -f docker-compose.prod.yml --env-file .env.production.example build
+
+      - name: Start staging stack
+        run: docker compose -f docker-compose.prod.yml --env-file .env.production.example up -d --wait --wait-timeout 180
+
+      - name: Health and readiness
+        run: |
+          curl -fsS http://127.0.0.1:3000/health
+          curl -fsS http://127.0.0.1:3000/ready
+
+      - name: Backup and restore verify
+        run: |
+          docker compose -f docker-compose.prod.yml --env-file .env.production.example exec -T backup sh /scripts/backup.sh
+          docker compose -f docker-compose.prod.yml --env-file .env.production.example exec -T backup sh /scripts/verify-backup.sh
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.prod.yml --env-file .env.production.example down

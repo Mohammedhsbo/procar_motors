@@ -1,0 +1,41 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main, master]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Build production images
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose config
+        run: docker compose -f docker-compose.prod.yml --env-file .env.production.example config
+
+      - name: Build
+        run: docker compose -f docker-compose.prod.yml --env-file .env.production.example build
+
+      - name: Staging stack smoke
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          docker compose -f docker-compose.prod.yml --env-file .env.production.example up -d --wait --wait-timeout 180
+          curl -fsS http://127.0.0.1:3000/health
+          curl -fsS http://127.0.0.1:3000/ready
+          docker compose -f docker-compose.prod.yml --env-file .env.production.example exec -T backup sh /scripts/backup.sh
+          docker compose -f docker-compose.prod.yml --env-file .env.production.example exec -T backup sh /scripts/verify-backup.sh
+
+      - name: Tear down
+        if: always() && github.event_name == 'workflow_dispatch'
+        run: docker compose -f docker-compose.prod.yml --env-file .env.production.example down

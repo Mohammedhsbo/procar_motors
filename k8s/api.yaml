@@ -1,0 +1,60 @@
+# Optional Kubernetes manifests. Primary deploy path is docker-compose.prod.yml.
+# Apply only after secrets are created in the target cluster (never commit secret values).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: promotors-api
+  labels:
+    app: promotors-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: promotors-api
+  template:
+    metadata:
+      labels:
+        app: promotors-api
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          image: promotors-api:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: promotors-api
+          env:
+            - name: NODE_ENV
+              value: production
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: '1'
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: promotors-api
+spec:
+  selector:
+    app: promotors-api
+  ports:
+    - port: 3000
+      targetPort: 3000
