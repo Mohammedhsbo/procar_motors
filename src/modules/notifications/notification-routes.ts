@@ -160,6 +160,81 @@ export const NOTIFICATION_ROUTES: NotificationRoute[] = [
     bodyEn: (p) => `${asText(p.expired, '0')} quotation(s) expired`,
     bodyAr: (p) => `انتهت صلاحية ${asText(p.expired, '0')} عرض/عروض`,
   },
+
+  // ── Cross-business events ────────────────────────────────────────────────
+  {
+    eventType: 'inspection.tires_required',
+    category: 'workshop',
+    roles: ['tires_manager', 'tires_sales', 'super_admin'],
+    titleEn: () => 'Workshop needs tires',
+    titleAr: () => 'الورشة تطلب إطارات',
+    bodyEn: (p) =>
+      `${asText(p.qty, '4')} tire(s) requested for a vehicle in the workshop`,
+    bodyAr: (p) => `مطلوب ${asText(p.qty, '4')} إطار لمركبة في الورشة`,
+    entityType: 'TireSalesOrder',
+    entityId: (p) => asId(p.tireOrderId),
+  },
+  {
+    eventType: 'cafe.waiting_area_order',
+    category: 'workshop',
+    roles: ['cafe_barista', 'cafe_cashier', 'cafe_manager', 'super_admin'],
+    titleEn: () => 'Order from the waiting area',
+    titleAr: () => 'طلب من منطقة الانتظار',
+    bodyEn: () => 'A customer waiting for their vehicle placed an order',
+    bodyAr: () => 'عميل ينتظر سيارته أرسل طلبًا',
+    entityType: 'CafeOrder',
+    entityId: (p) => asId(p.cafeOrderId),
+  },
+
+  // ── Reminders, raised nightly by the reminder engine ─────────────────────
+  {
+    eventType: 'reminder.oil_change_due',
+    category: 'reminders',
+    roles: ['advisor', 'reception', 'super_admin'],
+    titleEn: () => 'Oil change due',
+    titleAr: () => 'موعد تغيير الزيت',
+    bodyEn: (p) =>
+      `${asText(p.plate)} has run ${asText(p.kmSinceService)} km since its last service`,
+    bodyAr: (p) =>
+      `قطعت ${asText(p.plate)} مسافة ${asText(p.kmSinceService)} كم منذ آخر صيانة`,
+    entityType: 'Vehicle',
+    entityId: (p) => asId(p.vehicleId),
+  },
+  {
+    eventType: 'reminder.warranty_expiring',
+    category: 'reminders',
+    roles: ['advisor', 'reception', 'super_admin'],
+    titleEn: () => 'Warranty expiring soon',
+    titleAr: () => 'ضمان على وشك الانتهاء',
+    bodyEn: (p) => `Warranty on ${asText(p.plate)} expires shortly`,
+    bodyAr: (p) => `ضمان ${asText(p.plate)} ينتهي قريبًا`,
+    entityType: 'Warranty',
+    entityId: (p) => asId(p.warrantyId),
+  },
+  {
+    eventType: 'reminder.delivery_due',
+    category: 'workshop',
+    roles: ['advisor', 'workshop_manager', 'reception', 'super_admin'],
+    titleEn: (p) =>
+      p.overdue === true ? 'Delivery overdue' : 'Delivery due today',
+    titleAr: (p) =>
+      p.overdue === true ? 'تأخر موعد التسليم' : 'موعد التسليم اليوم',
+    bodyEn: (p) => `${asText(p.plate)} — status ${asText(p.status)}`,
+    bodyAr: (p) => `${asText(p.plate)} — الحالة ${asText(p.status)}`,
+    entityType: 'VehicleVisit',
+    entityId: (p) => asId(p.visitId),
+  },
+  {
+    eventType: 'reminder.customer_lapsed',
+    category: 'reminders',
+    roles: ['advisor', 'reception', 'super_admin'],
+    titleEn: (p) => `${asText(p.customerName, 'A customer')} has not visited`,
+    titleAr: (p) => `${asText(p.customerName, 'عميل')} لم يزر المركز`,
+    bodyEn: (p) => `No visit in the last ${asText(p.months, '6')} months`,
+    bodyAr: (p) => `لا توجد زيارة خلال آخر ${asText(p.months, '6')} أشهر`,
+    entityType: 'Customer',
+    entityId: (p) => asId(p.customerId),
+  },
 ];
 
 export function routeForEvent(eventType: string) {

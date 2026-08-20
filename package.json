@@ -26,7 +26,10 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "migrate:deploy": "node scripts/migrate.js",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "seed:prod": "ts-node --project prisma/tsconfig.seed.json prisma/seed.prod.ts",
+    "backup": "node scripts/backup.js",
+    "reset:demo": "node scripts/reset-demo-data.js"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

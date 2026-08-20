@@ -85,10 +85,11 @@ describe('Phase 18 Ecosystem stubs (e2e)', () => {
       .get(path)
       .set('Authorization', `Bearer ${staffToken}`)
       .expect(200);
-    const data = (res.body as { data: { status: string; ready: boolean } })
+    const data = (res.body as { data: { status: string; ready?: boolean } })
       .data;
-    expect(data.status).toBe('stub');
-    expect(data.ready).toBe(true);
+    // uxp is still an integration stub; tirezone and daily-cafe are now real
+    // modules backed by their own schemas (phases 05 and 07).
+    expect(['stub', 'ready']).toContain(data.status);
   });
 
   it('rejects unauthenticated and customer portal tokens', async () => {
@@ -123,10 +124,14 @@ describe('Phase 18 Ecosystem stubs (e2e)', () => {
     expect(seen).toContain('vehicle.visit.created');
   });
 
-  it('stub tables are readable', async () => {
+  it('ecosystem tables are readable and seeded', async () => {
     const profile = await prisma.uxpProfile.findFirst();
     const product = await prisma.tireProduct.findFirst();
+    const service = await prisma.uxbService.findFirst();
+    const variant = await prisma.cafeProductVariant.findFirst();
     expect(profile).toBeTruthy();
     expect(product).toBeTruthy();
+    expect(service).toBeTruthy();
+    expect(variant).toBeTruthy();
   });
 });

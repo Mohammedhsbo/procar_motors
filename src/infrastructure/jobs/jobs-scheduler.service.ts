@@ -49,6 +49,17 @@ export class JobsSchedulerService implements OnModuleInit {
       },
     );
 
+    // Reminder sweep — nightly 03:30, after the low-stock scan.
+    await this.scheduledQueue.upsertJobScheduler(
+      'reminders-repeat',
+      { pattern: '30 3 * * *' },
+      {
+        name: 'reminders',
+        data: { kind: 'reminders' },
+        opts: { removeOnComplete: 20, removeOnFail: 20 },
+      },
+    );
+
     // Low-stock scan — nightly 02:15
     await this.scheduledQueue.upsertJobScheduler(
       'low-stock-scan-repeat',
@@ -75,7 +86,9 @@ export class JobsSchedulerService implements OnModuleInit {
   }
 
   /** Test/smoke helper — run jobs on demand */
-  async runNow(kind: 'quotation-expiry' | 'low-stock-scan' | 'outbox-drain') {
+  async runNow(
+    kind: 'quotation-expiry' | 'low-stock-scan' | 'outbox-drain' | 'reminders',
+  ) {
     if (kind === 'outbox-drain') {
       return this.dispatcher.drain(100);
     }

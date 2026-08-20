@@ -257,8 +257,11 @@ export class PortalService {
         ticketNumber: v.jobTicket?.number ?? null,
         complaint: v.complaint,
         checkedInAt: v.checkedInAt,
+        expectedDeliveryAt: v.expectedDeliveryAt,
         completedAt: v.completedAt,
         deliveredAt: v.deliveredAt,
+        /** True once the workshop is finished with the vehicle. */
+        done: v.deliveredAt !== null || v.completedAt !== null,
         vehicle: v.vehicle,
       })),
     };

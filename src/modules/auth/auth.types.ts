@@ -4,6 +4,8 @@ export type JwtAccessPayload = {
   userType: 'staff' | 'customer';
   roles: string[];
   branchIds: string[];
+  /** Application codes this user may open — see core.user_app_access */
+  apps: string[];
   /** Present for portal customer sessions */
   customerId?: string | null;
 };

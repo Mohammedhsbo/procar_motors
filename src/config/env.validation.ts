@@ -27,6 +27,8 @@ export const envSchema = z.object({
   JWT_REFRESH_TTL: z.string().default('7d'),
   RATE_LIMIT_TTL_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_LIMIT: z.coerce.number().int().positive().default(120),
+  STORAGE_DRIVER: z.enum(['local', 'r2']).default('local'),
+  STORAGE_LOCAL_DIR: z.string().default('./storage/uploads'),
   R2_ENDPOINT: z.string().optional().default(''),
   R2_ACCESS_KEY: z.string().optional().default(''),
   R2_SECRET_KEY: z.string().optional().default(''),

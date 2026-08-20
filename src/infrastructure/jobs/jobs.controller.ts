@@ -37,7 +37,8 @@ export class JobsController {
     if (
       kind !== 'quotation-expiry' &&
       kind !== 'low-stock-scan' &&
-      kind !== 'outbox-drain'
+      kind !== 'outbox-drain' &&
+      kind !== 'reminders'
     ) {
       throw new ForbiddenException({
         code: ErrorCodes.VALIDATION_ERROR,

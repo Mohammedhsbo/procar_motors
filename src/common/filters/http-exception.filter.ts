@@ -32,7 +32,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       const body = exception.getResponse();
 
       if (typeof body === 'string') {
+        // Framework exceptions such as ThrottlerException respond with a bare
+        // string, so the code still has to come from the status.
         message = body;
+        code = this.mapStatusToCode(status);
       } else if (typeof body === 'object' && body !== null) {
         const obj = body as Record<string, unknown>;
         message =

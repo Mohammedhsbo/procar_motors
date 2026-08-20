@@ -5,6 +5,7 @@ import { OutboxDispatcherService } from './outbox-dispatcher.service';
 import { JobLockService } from './job-lock.service';
 import { QuotationsService } from '../../modules/quotations/quotations.service';
 import { LowStockScanService } from './low-stock-scan.service';
+import { ReminderEngineService } from './reminder-engine.service';
 
 export const QUEUE_OUTBOX = 'outbox-dispatch';
 export const QUEUE_SCHEDULED = 'scheduled-jobs';
@@ -36,6 +37,7 @@ export class ScheduledJobsProcessor extends WorkerHost {
     private readonly locks: JobLockService,
     private readonly quotations: QuotationsService,
     private readonly lowStock: LowStockScanService,
+    private readonly reminders: ReminderEngineService,
   ) {
     super();
   }
@@ -65,6 +67,19 @@ export class ScheduledJobsProcessor extends WorkerHost {
       }
       try {
         return await this.lowStock.scan();
+      } finally {
+        await unlock();
+      }
+    }
+
+    if (kind === 'reminders') {
+      const unlock = await this.locks.tryLock('reminders', 10 * 60_000);
+      if (!unlock) {
+        this.logger.debug('reminders skipped — lock held');
+        return { skipped: true, reason: 'lock' };
+      }
+      try {
+        return await this.reminders.run();
       } finally {
         await unlock();
       }

@@ -7,7 +7,7 @@ import { randomUUID } from 'crypto';
 import { AttachmentKind, AttachmentPhase } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { ErrorCodes } from '../../common/constants/error-codes';
-import { LocalStorageProvider } from './storage/local-storage.provider';
+import { StorageProvider } from './storage/storage.provider';
 
 const ALLOWED_MIME = new Set([
   'image/jpeg',
@@ -23,7 +23,7 @@ const MAX_SIZE = 25 * 1024 * 1024; // 25MB
 export class FilesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly storage: LocalStorageProvider,
+    private readonly storage: StorageProvider,
   ) {}
 
   async createUpload(
@@ -201,6 +201,76 @@ export class FilesService {
       size: attachment.size,
       createdAt: attachment.createdAt,
     };
+  }
+
+  /**
+   * Reads a confirmed file back. Kept behind the normal auth guard rather than
+   * exposing a public URL, so vehicle photos are never world-readable.
+   */
+  async getContent(organizationId: string, fileId: string) {
+    const file = await this.findOwned(organizationId, fileId);
+    if (file.status !== 'confirmed') {
+      throw new NotFoundException({
+        code: ErrorCodes.NOT_FOUND,
+        message: 'File has not been uploaded yet',
+      });
+    }
+    if (!(await this.storage.exists(file.key))) {
+      throw new NotFoundException({
+        code: ErrorCodes.NOT_FOUND,
+        message: 'Stored object is missing',
+      });
+    }
+    return {
+      buffer: await this.storage.readBuffer(file.key),
+      mime: file.mime,
+      filename: file.filename,
+      size: file.size,
+    };
+  }
+
+  /** Attachments linked to one entity, newest first, optionally by phase. */
+  async listAttachments(
+    organizationId: string,
+    entityType: string,
+    entityId: string,
+    phase?: AttachmentPhase,
+  ) {
+    const rows = await this.prisma.attachment.findMany({
+      where: {
+        organizationId,
+        entityType,
+        entityId,
+        ...(phase ? { phase } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Map each attachment back to the file record so the client can fetch it.
+    const keys = rows.map((r) => r.fileKey);
+    const files = keys.length
+      ? await this.prisma.storedFile.findMany({
+          where: { organizationId, key: { in: keys } },
+          select: { id: true, key: true, filename: true },
+        })
+      : [];
+    const byKey = new Map(files.map((f) => [f.key, f]));
+
+    return rows.map((a) => {
+      const file = byKey.get(a.fileKey);
+      return {
+        id: a.id,
+        fileId: file?.id ?? null,
+        filename: file?.filename ?? null,
+        entityType: a.entityType,
+        entityId: a.entityId,
+        kind: a.kind,
+        phase: a.phase,
+        mime: a.mime,
+        size: a.size,
+        createdAt: a.createdAt,
+      };
+    });
   }
 
   private async findOwned(organizationId: string, fileId: string) {

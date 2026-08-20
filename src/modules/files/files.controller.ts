@@ -2,11 +2,14 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Param,
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   Req,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -31,7 +34,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { AttachmentKind, AttachmentPhase } from '@prisma/client';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { CurrentUser } from '../rbac/decorators/request.decorators';
 import type { AuthUserContext } from '../auth/auth.types';
 import { ErrorCodes } from '../../common/constants/error-codes';
@@ -79,6 +82,19 @@ class CreateAttachmentDto {
 
   @IsEnum(AttachmentKind)
   kind!: AttachmentKind;
+
+  @IsOptional()
+  @IsEnum(AttachmentPhase)
+  phase?: AttachmentPhase;
+}
+
+class ListAttachmentsQuery {
+  @IsString()
+  @MinLength(1)
+  entityType!: string;
+
+  @IsUUID()
+  entityId!: string;
 
   @IsOptional()
   @IsEnum(AttachmentPhase)
@@ -142,6 +158,39 @@ export class FilesController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.files.confirm(user.orgId, id);
+  }
+
+  @Get('files/:id/content')
+  @ApiOperation({ summary: 'Download a confirmed file' })
+  async getContent(
+    @CurrentUser() user: AuthUserContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ) {
+    const file = await this.files.getContent(user.orgId, id);
+    res.setHeader('Content-Type', file.mime);
+    res.setHeader('Content-Length', String(file.size));
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(file.filename)}"`,
+    );
+    // Private: these are customer vehicle photos.
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(file.buffer);
+  }
+
+  @Get('attachments')
+  @ApiOperation({ summary: 'List attachments for one entity' })
+  listAttachments(
+    @CurrentUser() user: AuthUserContext,
+    @Query() query: ListAttachmentsQuery,
+  ) {
+    return this.files.listAttachments(
+      user.orgId,
+      query.entityType,
+      query.entityId,
+      query.phase,
+    );
   }
 
   @Post('attachments')

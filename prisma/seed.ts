@@ -4,6 +4,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
+import { seedEcosystem } from './seed-ecosystem';
 
 const prisma = new PrismaClient();
 
@@ -64,21 +65,87 @@ const ACTIONS = [
   'move',
 ] as const;
 
-const ROLES: { key: string; nameEn: string; nameAr: string }[] = [
-  { key: 'super_admin', nameEn: 'Super Admin', nameAr: 'مدير النظام الأعلى' },
-  { key: 'branch_admin', nameEn: 'Branch Admin', nameAr: 'مدير الفرع' },
-  { key: 'reception', nameEn: 'Reception', nameAr: 'الاستقبال' },
-  { key: 'advisor', nameEn: 'Service Advisor', nameAr: 'مستشار الخدمة' },
-  { key: 'workshop_manager', nameEn: 'Workshop Manager', nameAr: 'مدير الورشة' },
-  { key: 'technician', nameEn: 'Technician', nameAr: 'فني' },
-  { key: 'quality_controller', nameEn: 'Quality Controller', nameAr: 'مراقب الجودة' },
-  { key: 'store_keeper', nameEn: 'Store Keeper', nameAr: 'أمين المخزن' },
-  { key: 'warehouse_manager', nameEn: 'Warehouse Manager', nameAr: 'مدير المخزن' },
-  { key: 'purchasing_officer', nameEn: 'Purchasing Officer', nameAr: 'مسؤول المشتريات' },
-  { key: 'purchasing_manager', nameEn: 'Purchasing Manager', nameAr: 'مدير المشتريات' },
-  { key: 'accountant', nameEn: 'Accountant', nameAr: 'المحاسب' },
-  { key: 'finance_manager', nameEn: 'Finance Manager', nameAr: 'مدير المالية' },
-  { key: 'customer', nameEn: 'Customer', nameAr: 'عميل' },
+/** `app: null` means the role spans every application. */
+const ROLES: {
+  key: string;
+  nameEn: string;
+  nameAr: string;
+  app: string | null;
+}[] = [
+  { key: 'super_admin', nameEn: 'Super Admin', nameAr: 'مدير النظام الأعلى', app: null },
+  { key: 'branch_admin', nameEn: 'Branch Admin', nameAr: 'مدير الفرع', app: null },
+  { key: 'accountant', nameEn: 'Accountant', nameAr: 'المحاسب', app: null },
+  { key: 'finance_manager', nameEn: 'Finance Manager', nameAr: 'مدير المالية', app: null },
+  { key: 'customer', nameEn: 'Customer', nameAr: 'عميل', app: null },
+
+  // Pro Motors — workshop
+  { key: 'reception', nameEn: 'Reception', nameAr: 'الاستقبال', app: 'promotors' },
+  { key: 'advisor', nameEn: 'Service Advisor', nameAr: 'مستشار الخدمة', app: 'promotors' },
+  { key: 'workshop_manager', nameEn: 'Workshop Manager', nameAr: 'مدير الورشة', app: 'promotors' },
+  { key: 'technician', nameEn: 'Technician', nameAr: 'فني', app: 'promotors' },
+  { key: 'quality_controller', nameEn: 'Quality Controller', nameAr: 'مراقب الجودة', app: 'promotors' },
+  { key: 'store_keeper', nameEn: 'Store Keeper', nameAr: 'أمين المخزن', app: 'promotors' },
+  { key: 'warehouse_manager', nameEn: 'Warehouse Manager', nameAr: 'مدير المخزن', app: 'promotors' },
+  { key: 'purchasing_officer', nameEn: 'Purchasing Officer', nameAr: 'مسؤول المشتريات', app: 'promotors' },
+  { key: 'purchasing_manager', nameEn: 'Purchasing Manager', nameAr: 'مدير المشتريات', app: 'promotors' },
+
+  // UXB — car care / PPF / window film
+  { key: 'uxb_manager', nameEn: 'UXB Manager', nameAr: 'مدير يو إكس بي', app: 'uxb' },
+  { key: 'uxb_advisor', nameEn: 'UXB Advisor', nameAr: 'مستشار يو إكس بي', app: 'uxb' },
+  { key: 'uxb_technician', nameEn: 'UXB Technician', nameAr: 'فني يو إكس بي', app: 'uxb' },
+
+  // Tire Zone
+  { key: 'tires_manager', nameEn: 'Tires Manager', nameAr: 'مدير تاير زون', app: 'tirezone' },
+  { key: 'tires_sales', nameEn: 'Tires Sales', nameAr: 'مبيعات الإطارات', app: 'tirezone' },
+  { key: 'tires_fitter', nameEn: 'Tire Fitter', nameAr: 'فني إطارات', app: 'tirezone' },
+
+  // Daily Cup
+  { key: 'cafe_manager', nameEn: 'Cafe Manager', nameAr: 'مدير الكافيه', app: 'dailycup' },
+  { key: 'cafe_cashier', nameEn: 'Cashier', nameAr: 'كاشير', app: 'dailycup' },
+  { key: 'cafe_barista', nameEn: 'Barista', nameAr: 'باريستا', app: 'dailycup' },
+];
+
+/** Application registry — mirrors src/common/constants/applications.ts */
+const APPLICATIONS: {
+  code: string;
+  nameEn: string;
+  nameAr: string;
+  description: string;
+  color: string;
+  sortOrder: number;
+}[] = [
+  {
+    code: 'promotors',
+    nameEn: 'Pro Motors',
+    nameAr: 'برو موتورز',
+    description: 'Vehicle service management — reception to delivery',
+    color: '#12556b',
+    sortOrder: 1,
+  },
+  {
+    code: 'uxb',
+    nameEn: 'UXB',
+    nameAr: 'يو إكس بي',
+    description: 'Car care, PPF, window film and polishing',
+    color: '#1f2933',
+    sortOrder: 2,
+  },
+  {
+    code: 'tirezone',
+    nameEn: 'Tire Zone',
+    nameAr: 'تاير زون',
+    description: 'Tire retail, fitting services and point of sale',
+    color: '#b4641a',
+    sortOrder: 3,
+  },
+  {
+    code: 'dailycup',
+    nameEn: 'Daily Cup',
+    nameAr: 'ديلي كب',
+    description: 'Coffee shop operations, recipe costing and point of sale',
+    color: '#7a4b2a',
+    sortOrder: 4,
+  },
 ];
 
 /** Map frontend demo role keys → backend role keys */
@@ -89,6 +156,8 @@ const DEMO_USERS: {
   roleKey: string;
   branchCode: string;
   phone: string;
+  /** Applications this demo user may open. super_admin gets all implicitly. */
+  apps: string[];
 }[] = [
   {
     email: 'superadmin@promotors.eg',
@@ -97,6 +166,7 @@ const DEMO_USERS: {
     roleKey: 'super_admin',
     branchCode: 'b1',
     phone: '+20 100 111 2233',
+    apps: ['promotors', 'uxb', 'tirezone', 'dailycup'],
   },
   {
     email: 'admin@promotors.eg',
@@ -105,6 +175,7 @@ const DEMO_USERS: {
     roleKey: 'branch_admin',
     branchCode: 'b1',
     phone: '+20 122 334 5566',
+    apps: ['promotors', 'uxb', 'tirezone', 'dailycup'],
   },
   {
     email: 'reception@promotors.eg',
@@ -113,6 +184,111 @@ const DEMO_USERS: {
     roleKey: 'reception',
     branchCode: 'b1',
     phone: '+20 111 220 8877',
+    apps: ['promotors'],
+  },
+  {
+    email: 'uxb@promotors.eg',
+    nameEn: 'UXB Manager',
+    nameAr: 'مدير يو إكس بي',
+    roleKey: 'uxb_manager',
+    branchCode: 'b1',
+    phone: '+20 100 447 1290',
+    apps: ['uxb'],
+  },
+  {
+    email: 'tires@promotors.eg',
+    nameEn: 'Tires Manager',
+    nameAr: 'مدير تاير زون',
+    roleKey: 'tires_manager',
+    branchCode: 'b1',
+    phone: '+20 106 903 4418',
+    apps: ['tirezone'],
+  },
+  {
+    email: 'cafe@promotors.eg',
+    nameEn: 'Cafe Manager',
+    nameAr: 'مدير الكافيه',
+    roleKey: 'cafe_manager',
+    branchCode: 'b1',
+    phone: '+20 128 776 5502',
+    apps: ['dailycup'],
+  },
+
+  // Named staff the e2e suite signs in as. These were lost when the project
+  // moved, which left all 19 e2e suites failing on login — keep them in sync
+  // with test/*.e2e-spec.ts.
+  {
+    email: 'kareem@promotors.eg',
+    nameEn: 'Kareem Fouad',
+    nameAr: 'كريم فؤاد',
+    roleKey: 'super_admin',
+    branchCode: 'b1',
+    phone: '+20 100 555 0101',
+    apps: ['promotors', 'uxb', 'tirezone', 'dailycup'],
+  },
+  {
+    email: 'nourhan@promotors.eg',
+    nameEn: 'Nourhan Adel',
+    nameAr: 'نورهان عادل',
+    roleKey: 'reception',
+    branchCode: 'b1',
+    phone: '+20 100 555 0102',
+    apps: ['promotors'],
+  },
+  {
+    email: 'mostafa@promotors.eg',
+    nameEn: 'Mostafa Zaki',
+    nameAr: 'مصطفى زكي',
+    roleKey: 'advisor',
+    branchCode: 'b1',
+    phone: '+20 100 555 0103',
+    apps: ['promotors'],
+  },
+  {
+    email: 'mona@promotors.eg',
+    nameEn: 'Mona Saleh',
+    nameAr: 'منى صالح',
+    // Approves purchase requests and orders in the purchasing/finance suites.
+    roleKey: 'purchasing_manager',
+    branchCode: 'b1',
+    phone: '+20 100 555 0104',
+    apps: ['promotors'],
+  },
+  {
+    email: 'm.ahmed@promotors.eg',
+    nameEn: 'Mohamed Ahmed',
+    nameAr: 'محمد أحمد',
+    roleKey: 'technician',
+    branchCode: 'b1',
+    phone: '+20 100 555 0105',
+    apps: ['promotors'],
+  },
+  {
+    email: 'sayed@promotors.eg',
+    nameEn: 'Sayed Gamal',
+    nameAr: 'سيد جمال',
+    roleKey: 'store_keeper',
+    branchCode: 'b1',
+    phone: '+20 100 555 0106',
+    apps: ['promotors'],
+  },
+  {
+    email: 'hany@promotors.eg',
+    nameEn: 'Hany Wagdy',
+    nameAr: 'هاني وجدي',
+    roleKey: 'purchasing_officer',
+    branchCode: 'b1',
+    phone: '+20 100 555 0107',
+    apps: ['promotors'],
+  },
+  {
+    email: 'rania@promotors.eg',
+    nameEn: 'Rania Kamal',
+    nameAr: 'رانيا كمال',
+    roleKey: 'accountant',
+    branchCode: 'b1',
+    phone: '+20 100 555 0108',
+    apps: ['promotors'],
   },
 ];
 
@@ -206,16 +382,59 @@ async function main() {
   for (const r of ROLES) {
     const role = await prisma.role.upsert({
       where: { organizationId_key: { organizationId: org.id, key: r.key } },
-      update: { nameEn: r.nameEn, nameAr: r.nameAr },
+      update: {
+        nameEn: r.nameEn,
+        nameAr: r.nameAr,
+        applicationCode: r.app,
+      },
       create: {
         organizationId: org.id,
         key: r.key,
         nameEn: r.nameEn,
         nameAr: r.nameAr,
+        applicationCode: r.app,
         isSystem: true,
       },
     });
     roleIds[r.key] = role.id;
+  }
+
+  // ── Applications registry ────────────────────────────────────────────────
+  const appIds: Record<string, string> = {};
+  for (const a of APPLICATIONS) {
+    const app = await prisma.application.upsert({
+      where: { organizationId_code: { organizationId: org.id, code: a.code } },
+      update: {
+        nameEn: a.nameEn,
+        nameAr: a.nameAr,
+        description: a.description,
+        color: a.color,
+        sortOrder: a.sortOrder,
+        status: 'active',
+      },
+      create: {
+        organizationId: org.id,
+        code: a.code,
+        nameEn: a.nameEn,
+        nameAr: a.nameAr,
+        description: a.description,
+        color: a.color,
+        sortOrder: a.sortOrder,
+        status: 'active',
+      },
+    });
+    appIds[a.code] = app.id;
+  }
+
+  // Every branch runs every business in the demo dataset.
+  for (const branchId of Object.values(branches)) {
+    for (const applicationId of Object.values(appIds)) {
+      await prisma.branchApplication.upsert({
+        where: { branchId_applicationId: { branchId, applicationId } },
+        update: { enabled: true },
+        create: { branchId, applicationId, enabled: true },
+      });
+    }
   }
 
   // Super admin gets all permissions
@@ -599,6 +818,82 @@ async function main() {
     }
   }
 
+  // ── Phase 01 — baseline permissions for the ecosystem app roles ─────────
+  // Managers run their business end to end; operators get the day-to-day set.
+  const grantTo = async (roleKey: string, match: (p: (typeof allPermissions)[number]) => boolean) => {
+    const roleId = roleIds[roleKey];
+    if (!roleId) return;
+    for (const p of allPermissions.filter(match)) {
+      await prisma.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId, permissionId: p.id } },
+        update: {},
+        create: { roleId, permissionId: p.id },
+      });
+    }
+  };
+
+  const MANAGER_RESOURCES = [
+    'customers',
+    'vehicles',
+    'visits',
+    'inspections',
+    'work_orders',
+    'inventory',
+    'parts',
+    'reservations',
+    'quotations',
+    'invoices',
+    'payments',
+    'expenses',
+    'suppliers',
+    'purchase_requests',
+    'purchase_orders',
+    'goods_receipts',
+    'services',
+    'reports',
+    'dashboard',
+    'notifications',
+    'board',
+    'tasks',
+  ];
+
+  const OPERATOR_RESOURCES = [
+    'customers',
+    'vehicles',
+    'visits',
+    'inventory',
+    'parts',
+    'quotations',
+    'invoices',
+    'payments',
+    'services',
+    'dashboard',
+    'notifications',
+  ];
+
+  for (const roleKey of ['uxb_manager', 'tires_manager', 'cafe_manager']) {
+    await grantTo(roleKey, (p) => MANAGER_RESOURCES.includes(p.resource));
+  }
+
+  for (const roleKey of ['uxb_advisor', 'tires_sales', 'cafe_cashier']) {
+    await grantTo(
+      roleKey,
+      (p) =>
+        OPERATOR_RESOURCES.includes(p.resource) &&
+        ['view', 'create', 'update'].includes(p.action),
+    );
+  }
+
+  for (const roleKey of ['uxb_technician', 'tires_fitter', 'cafe_barista']) {
+    await grantTo(
+      roleKey,
+      (p) =>
+        ['visits', 'work_orders', 'tasks', 'dashboard', 'notifications'].includes(
+          p.resource,
+        ) && ['view', 'update', 'complete'].includes(p.action),
+    );
+  }
+
   // Phase 16 — customer portal role (own data only via portal controllers)
   const customerPortalPerms = allPermissions.filter(
     (p) =>
@@ -884,6 +1179,24 @@ async function main() {
         create: { userId: user.id, branchId },
       });
     }
+
+    // Application access — first entry becomes the landing app.
+    for (const [index, code] of u.apps.entries()) {
+      const applicationId = appIds[code];
+      if (!applicationId) continue;
+      await prisma.userAppAccess.upsert({
+        where: {
+          userId_applicationId: { userId: user.id, applicationId },
+        },
+        update: { isDefault: index === 0, status: 'active' },
+        create: {
+          userId: user.id,
+          applicationId,
+          isDefault: index === 0,
+          status: 'active',
+        },
+      });
+    }
   }
 
   // Demo customers from mock-data
@@ -918,6 +1231,33 @@ async function main() {
     where: { phone: '+20 100 214 8890' },
   });
 
+  // Deterministic vehicle for the search e2e suite, which looks up the plate
+  // fragment "4521". Every other demo vehicle gets a random plate.
+  await prisma.vehicle.upsert({
+    where: {
+      organizationId_plateNormalized: {
+        organizationId: org.id,
+        plateNormalized: 'سص4521',
+      },
+    },
+    update: {},
+    create: {
+      organizationId: org.id,
+      customerId: ahmed.id,
+      plate: 'س ص 4521',
+      plateNormalized: 'سص4521',
+      vin: 'JTDBR32E560091234',
+      make: 'Toyota',
+      model: 'Corolla',
+      year: 2021,
+      color: 'Silver',
+      fuelType: 'petrol',
+      transmission: 'auto',
+      mileageCurrent: 48200,
+      status: 'active',
+    },
+  });
+
   const customerUser = await prisma.user.upsert({
     where: { customerId: ahmed.id },
     update: {
@@ -945,6 +1285,13 @@ async function main() {
       userId: customerUser.id,
       roleId: roleIds.customer!,
     },
+  });
+
+  await seedEcosystem({
+    prisma,
+    organizationId: org.id,
+    branchIds: Object.values(branches),
+    primaryBranchId: branches.b1!,
   });
 
   console.log('Seed complete.');

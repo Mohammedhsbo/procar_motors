@@ -117,12 +117,14 @@ export class AuthService {
 
     const roles = user.roles.map((r) => r.role.key);
     const branchIds = user.branches.map((b) => b.branchId);
+    const apps = await this.getAppCodesForUser(user.id, roles);
     const tokens = await this.issueTokens({
       userId: user.id,
       orgId: user.organizationId,
       userType: user.userType,
       roles,
       branchIds,
+      apps,
       deviceInfo: params.deviceInfo,
       ip: params.ip,
     });
@@ -138,6 +140,7 @@ export class AuthService {
         locale: user.locale,
         roles,
         branchIds,
+        apps,
       },
     };
   }
@@ -200,6 +203,7 @@ export class AuthService {
 
     const roles = stored.user.roles.map((r) => r.role.key);
     const branchIds = stored.user.branches.map((b) => b.branchId);
+    const apps = await this.getAppCodesForUser(stored.user.id, roles);
 
     return this.issueTokens({
       userId: stored.user.id,
@@ -207,6 +211,7 @@ export class AuthService {
       userType: stored.user.userType,
       roles,
       branchIds,
+      apps,
       customerId: stored.user.customerId,
       deviceInfo: stored.deviceInfo ?? undefined,
       ip,
@@ -248,6 +253,7 @@ export class AuthService {
     const permissions = await this.getPermissionKeysForRoles(
       user.roles.map((r) => r.roleId),
     );
+    const apps = await this.getAppCodesForUser(user.id, roles);
 
     return {
       id: user.id,
@@ -260,9 +266,39 @@ export class AuthService {
       organizationId: user.organizationId,
       roles,
       branchIds,
+      apps,
       permissions,
       lastLoginAt: user.lastLoginAt,
     };
+  }
+
+  /**
+   * Application codes the user may open. `super_admin` implicitly gets every
+   * active application so a fresh install is never locked out of a new app.
+   */
+  async getAppCodesForUser(
+    userId: string,
+    roleKeys: string[],
+  ): Promise<string[]> {
+    if (roleKeys.includes('super_admin')) {
+      const all = await this.prisma.application.findMany({
+        where: { status: 'active' },
+        orderBy: { sortOrder: 'asc' },
+        select: { code: true },
+      });
+      return all.map((a) => a.code);
+    }
+
+    const rows = await this.prisma.userAppAccess.findMany({
+      where: {
+        userId,
+        status: 'active',
+        application: { status: 'active' },
+      },
+      orderBy: { application: { sortOrder: 'asc' } },
+      select: { application: { select: { code: true } } },
+    });
+    return rows.map((r) => r.application.code);
   }
 
   forgotPassword(email: string) {
@@ -290,6 +326,7 @@ export class AuthService {
     userType: 'staff' | 'customer';
     roles: string[];
     branchIds: string[];
+    apps?: string[];
     customerId?: string | null;
     deviceInfo?: string;
     ip?: string;
@@ -303,6 +340,7 @@ export class AuthService {
     userType: 'staff' | 'customer';
     roles: string[];
     branchIds: string[];
+    apps?: string[];
     customerId?: string | null;
     deviceInfo?: string;
     ip?: string;
@@ -314,6 +352,7 @@ export class AuthService {
       userType: params.userType,
       roles: params.roles,
       branchIds: params.branchIds,
+      apps: params.apps ?? [],
       customerId: params.customerId ?? null,
     };
 

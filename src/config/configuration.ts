@@ -17,6 +17,9 @@ export default (): EnvConfig => ({
   JWT_REFRESH_TTL: process.env.JWT_REFRESH_TTL ?? '7d',
   RATE_LIMIT_TTL_MS: Number(process.env.RATE_LIMIT_TTL_MS ?? 60_000),
   RATE_LIMIT_LIMIT: Number(process.env.RATE_LIMIT_LIMIT ?? 120),
+  STORAGE_DRIVER:
+    (process.env.STORAGE_DRIVER as EnvConfig['STORAGE_DRIVER']) ?? 'local',
+  STORAGE_LOCAL_DIR: process.env.STORAGE_LOCAL_DIR ?? './storage/uploads',
   R2_ENDPOINT: process.env.R2_ENDPOINT ?? '',
   R2_ACCESS_KEY: process.env.R2_ACCESS_KEY ?? '',
   R2_SECRET_KEY: process.env.R2_SECRET_KEY ?? '',

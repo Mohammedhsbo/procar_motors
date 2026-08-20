@@ -9,6 +9,7 @@ import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { ApplicationsModule } from './modules/applications/applications.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { EmployeesModule } from './modules/employees/employees.module';
@@ -16,6 +17,8 @@ import { FilesModule } from './modules/files/files.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { RolesModule } from './modules/roles/roles.module';
+import { IntegrationModule } from './modules/integration/integration.module';
+import { ServicesModule } from './modules/services/services.module';
 import { SearchModule } from './modules/search/search.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { UsersModule } from './modules/users/users.module';
@@ -39,9 +42,10 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { PortalModule } from './modules/portal/portal.module';
+import { TireszoneModule } from './modules/tireszone/tireszone.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { UxpModule } from './modules/uxp/uxp.module';
-import { TireszoneModule } from './modules/tireszone/tireszone.module';
+
 import { DailyCafeModule } from './modules/daily-cafe/daily-cafe.module';
 import { JobsModule } from './infrastructure/jobs/jobs.module';
 import { RealtimeModule } from './infrastructure/realtime/realtime.module';
@@ -76,6 +80,7 @@ import { CacheModule } from './infrastructure/cache/cache.module';
     RbacModule,
     OrganizationsModule,
     BranchesModule,
+    ApplicationsModule,
     UsersModule,
     EmployeesModule,
     RolesModule,
@@ -84,6 +89,8 @@ import { CacheModule } from './infrastructure/cache/cache.module';
     CustomersModule,
     VehiclesModule,
     SearchModule,
+    ServicesModule,
+    IntegrationModule,
     VehicleVisitsModule,
     FilesModule,
     InspectionsModule,

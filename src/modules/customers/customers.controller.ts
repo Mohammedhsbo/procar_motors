@@ -33,6 +33,7 @@ import { RequirePermissions } from '../rbac/decorators/rbac.decorators';
 import { CurrentUser } from '../rbac/decorators/request.decorators';
 import type { AuthUserContext } from '../auth/auth.types';
 import { CustomersService } from './customers.service';
+import { Customer360Service } from './customer-360.service';
 
 class ListCustomersQueryDto {
   @IsOptional()
@@ -159,7 +160,10 @@ class UpdateCustomerDto {
 @ApiHeader({ name: 'X-Branch-Id', required: true })
 @Controller('customers')
 export class CustomersController {
-  constructor(private readonly customers: CustomersService) {}
+  constructor(
+    private readonly customers: CustomersService,
+    private readonly customer360: Customer360Service,
+  ) {}
 
   @Get()
   @RequirePermissions('customers.view')
@@ -179,6 +183,18 @@ export class CustomersController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.customers.getById(user.orgId, id);
+  }
+
+  @Get(':id/360')
+  @RequirePermissions('customers.view')
+  @ApiOperation({
+    summary: 'Customer 360 — activity and spend across all four applications',
+  })
+  overview(
+    @CurrentUser() user: AuthUserContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.customer360.get(user.orgId, id);
   }
 
   @Get(':id/vehicles')

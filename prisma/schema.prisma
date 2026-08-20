@@ -245,6 +245,8 @@ enum PaymentMethod {
   visa
   bank_transfer
   wallet
+  instapay
+  vodafone_cash
   other
 
   @@schema("finance")
@@ -325,6 +327,7 @@ model Organization {
   partCategories  PartCategory[]
   suppliers       Supplier[]
   taxRates        TaxRate[]
+  applications    Application[]
 
   @@map("organizations")
   @@schema("core")
@@ -352,9 +355,69 @@ model Branch {
   warehouses   Warehouse[]
   visits       VehicleVisit[]
   preferredBy  Customer[] @relation("PreferredBranch")
+  applications BranchApplication[]
 
   @@unique([organizationId, code])
   @@map("branches")
+  @@schema("core")
+}
+
+/// Registry of the four business applications sharing this backend:
+/// promotors (workshop ERP) · uxb (car care / PPF) · tirezone (tires) · dailycup (cafe).
+model Application {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  code           String
+  nameEn         String    @map("name_en")
+  nameAr         String    @map("name_ar")
+  description    String?
+  baseUrl        String?   @map("base_url")
+  icon           String?
+  color          String?
+  sortOrder      Int       @default(0) @map("sort_order")
+  status         String    @default("active")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  userAccess   UserAppAccess[]
+  branches     BranchApplication[]
+
+  @@unique([organizationId, code])
+  @@map("applications")
+  @@schema("core")
+}
+
+/// Which applications a user may open, and which one they land on by default.
+model UserAppAccess {
+  userId        String   @map("user_id") @db.Uuid
+  applicationId String   @map("application_id") @db.Uuid
+  isDefault     Boolean  @default(false) @map("is_default")
+  status        String   @default("active")
+  grantedBy     String?  @map("granted_by") @db.Uuid
+  grantedAt     DateTime @default(now()) @map("granted_at") @db.Timestamptz(6)
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, applicationId])
+  @@index([applicationId])
+  @@map("user_app_access")
+  @@schema("core")
+}
+
+/// Which businesses actually operate at a given branch.
+model BranchApplication {
+  branchId      String  @map("branch_id") @db.Uuid
+  applicationId String  @map("application_id") @db.Uuid
+  enabled       Boolean @default(true)
+
+  branch      Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@id([branchId, applicationId])
+  @@index([applicationId])
+  @@map("branch_applications")
   @@schema("core")
 }
 
@@ -427,6 +490,7 @@ model User {
   branches      UserBranchAccess[]
   refreshTokens RefreshToken[]
   notifications Notification[]
+  appAccess     UserAppAccess[]
 
   @@unique([organizationId, email])
   @@map("users")
@@ -439,6 +503,8 @@ model Role {
   key            String
   nameEn         String    @map("name_en")
   nameAr         String    @map("name_ar")
+  /// Application this role belongs to; null means it spans all applications.
+  applicationCode String?  @map("application_code")
   isSystem       Boolean   @default(false) @map("is_system")
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -457,6 +523,8 @@ model Permission {
   key         String @unique
   resource    String
   action      String
+  /// Application this permission is scoped to; null means it spans all applications.
+  applicationCode String? @map("application_code")
   description String?
 
   roles RolePermission[]
@@ -530,7 +598,8 @@ model Customer {
   invoices        Invoice[]
   uxpProfile      UxpProfile?
   cafeOrders      CafeOrder[]
-  tireOrders      TireOrder[]
+  tireOrders      TireSalesOrder[]
+  uxbJobs         UxbJob[]
 
   @@unique([organizationId, phone])
   @@index([nameEn])
@@ -629,7 +698,8 @@ model Vehicle {
   customer     Customer       @relation(fields: [customerId], references: [id])
   visits       VehicleVisit[]
   warranties   Warranty[]
-  tireOrders   TireOrder[]
+  tireOrders   TireSalesOrder[]
+  uxbJobs      UxbJob[]
 
   @@unique([organizationId, plateNormalized])
   @@unique([organizationId, vin])
@@ -676,7 +746,8 @@ model VehicleVisit {
   qualityChecks QualityCheck[]
   reservations  StockReservation[]
   cafeOrders    CafeOrder[]
-  tireOrders    TireOrder[]
+  tireOrders    TireSalesOrder[]
+  uxbJobs       UxbJob[]
 
   @@index([branchId, status])
   @@index([branchId, checkedInAt])
@@ -859,7 +930,7 @@ model WorkOrder {
   reservations    StockReservation[]
   warranties      Warranty[]
   invoices        Invoice[]
-  tireOrders      TireOrder[]
+  tireOrders      TireSalesOrder[]
 
   @@unique([organizationId, number])
   @@index([branchId, status])
@@ -1027,6 +1098,13 @@ model Part {
   transactions InventoryTransaction[]
   reservations StockReservation[]
   alerts       StockAlert[]
+
+  // Ecosystem specialisations — stock stays here, attributes live per app.
+  tireProduct     TireProduct?
+  materialRolls   UxbMaterialRoll[]
+  cafeRecipeItems CafeRecipeItem[]
+  cafeModifiers   CafeModifier[]
+  cafeWasteLogs   CafeWasteLog[]
 
   @@unique([organizationId, sku])
   @@unique([organizationId, barcode])
@@ -1363,6 +1441,11 @@ model Invoice {
   quotationId    String?       @map("quotation_id") @db.Uuid
   customerId     String        @map("customer_id") @db.Uuid
   number         String
+  /// Which application raised this invoice — promotors | uxb | tirezone | dailycup.
+  sourceApp      String        @default("promotors") @map("source_app")
+  /// Domain object the invoice was raised from, e.g. "tirezone.sales_order".
+  sourceRefType  String?       @map("source_ref_type")
+  sourceRef      String?       @map("source_ref") @db.Uuid
   status         InvoiceStatus @default(draft)
   subtotal       Decimal       @default(0) @db.Decimal(14, 2)
   discount       Decimal       @default(0) @db.Decimal(14, 2)
@@ -1387,6 +1470,7 @@ model Invoice {
 
   @@unique([organizationId, number])
   @@index([branchId, status])
+  @@index([sourceApp, sourceRef])
   @@map("invoices")
   @@schema("finance")
 }
@@ -1638,59 +1722,634 @@ model UxpProfile {
   @@schema("uxp")
 }
 
+// ── UXB — car care, PPF, window film, polishing ──────────────────────────
+
+model UxbServiceCategory {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  /// window_film | ppf | car_care | polishing | accessories
+  code           String
+  nameEn         String   @map("name_en")
+  nameAr         String   @map("name_ar")
+  sortOrder      Int      @default(0) @map("sort_order")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  services UxbService[]
+
+  @@unique([organizationId, code])
+  @@map("service_categories")
+  @@schema("uxp")
+}
+
+/// Pricing dimension — a Corolla and a Land Cruiser are not the same job.
+model UxbSizeClass {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  code           String
+  nameEn         String   @map("name_en")
+  nameAr         String   @map("name_ar")
+  multiplier     Decimal  @default(1) @db.Decimal(6, 3)
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  prices UxbServicePrice[]
+  jobs   UxbJob[]
+
+  @@unique([organizationId, code])
+  @@map("vehicle_size_classes")
+  @@schema("uxp")
+}
+
+model UxbService {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  categoryId     String   @map("category_id") @db.Uuid
+  code           String
+  nameEn         String   @map("name_en")
+  nameAr         String   @map("name_ar")
+  description    String?
+  basePrice      Decimal  @default(0) @map("base_price") @db.Decimal(14, 2)
+  durationMin    Int      @default(60) @map("duration_min")
+  warrantyMonths Int?     @map("warranty_months")
+  /// Consumable this service draws from, e.g. a film roll in inventory.
+  materialPartId String?  @map("material_part_id") @db.Uuid
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  category UxbServiceCategory @relation(fields: [categoryId], references: [id])
+  prices   UxbServicePrice[]
+  jobItems UxbJobItem[]
+
+  @@unique([organizationId, code])
+  @@index([categoryId])
+  @@map("services")
+  @@schema("uxp")
+}
+
+model UxbServicePrice {
+  id          String  @id @default(uuid()) @db.Uuid
+  serviceId   String  @map("service_id") @db.Uuid
+  sizeClassId String  @map("size_class_id") @db.Uuid
+  price       Decimal @db.Decimal(14, 2)
+
+  service   UxbService   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  sizeClass UxbSizeClass @relation(fields: [sizeClassId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, sizeClassId])
+  @@map("service_prices")
+  @@schema("uxp")
+}
+
+model UxbJob {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  branchId       String    @map("branch_id") @db.Uuid
+  number         String
+  customerId     String    @map("customer_id") @db.Uuid
+  vehicleId      String    @map("vehicle_id") @db.Uuid
+  sizeClassId    String?   @map("size_class_id") @db.Uuid
+  /// reception | inspection | in_progress | quality | ready | delivered | cancelled
+  stage          String    @default("reception")
+  /// Set when the job came from a Pro Motors workshop visit.
+  visitId        String?   @map("visit_id") @db.Uuid
+  advisorId      String?   @map("advisor_id") @db.Uuid
+  odometer       Int?
+  complaint      String?
+  notes          String?
+  subtotal       Decimal   @default(0) @db.Decimal(14, 2)
+  discount       Decimal   @default(0) @db.Decimal(14, 2)
+  tax            Decimal   @default(0) @db.Decimal(14, 2)
+  total          Decimal   @default(0) @db.Decimal(14, 2)
+  invoiceId      String?   @map("invoice_id") @db.Uuid
+  promisedAt     DateTime? @map("promised_at") @db.Timestamptz(6)
+  startedAt      DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+  deliveredAt    DateTime? @map("delivered_at") @db.Timestamptz(6)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  customer  Customer            @relation(fields: [customerId], references: [id])
+  vehicle   Vehicle             @relation(fields: [vehicleId], references: [id])
+  visit     VehicleVisit?       @relation(fields: [visitId], references: [id])
+  sizeClass UxbSizeClass?       @relation(fields: [sizeClassId], references: [id])
+  items     UxbJobItem[]
+  zones     UxbJobZone[]
+  readings  UxbPaintReading[]
+
+  @@unique([organizationId, number])
+  @@index([branchId, stage])
+  @@index([customerId])
+  @@index([vehicleId])
+  @@index([visitId])
+  @@map("jobs")
+  @@schema("uxp")
+}
+
+model UxbJobItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  jobId        String   @map("job_id") @db.Uuid
+  serviceId    String   @map("service_id") @db.Uuid
+  /// Panel or area this line covers, e.g. "hood", "front_door_right".
+  zone         String?
+  areaSqm      Decimal? @map("area_sqm") @db.Decimal(10, 3)
+  qty          Decimal  @default(1) @db.Decimal(14, 3)
+  unitPrice    Decimal  @map("unit_price") @db.Decimal(14, 2)
+  discount     Decimal  @default(0) @db.Decimal(14, 2)
+  lineTotal    Decimal  @map("line_total") @db.Decimal(14, 2)
+  technicianId String?  @map("technician_id") @db.Uuid
+  status       String   @default("pending")
+  sortOrder    Int      @default(0) @map("sort_order")
+
+  job         UxbJob               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  service     UxbService           @relation(fields: [serviceId], references: [id])
+  consumption UxbRollConsumption[]
+
+  @@index([jobId])
+  @@map("job_items")
+  @@schema("uxp")
+}
+
+/// Per-panel coverage state, drives the interactive vehicle map.
+model UxbJobZone {
+  id        String  @id @default(uuid()) @db.Uuid
+  jobId     String  @map("job_id") @db.Uuid
+  panelCode String  @map("panel_code")
+  status    String  @default("planned")
+  filmType  String? @map("film_type")
+  notes     String?
+
+  job UxbJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, panelCode])
+  @@map("job_zones")
+  @@schema("uxp")
+}
+
+/// Paint thickness in microns, recorded before polishing or correction.
+model UxbPaintReading {
+  id           String   @id @default(uuid()) @db.Uuid
+  jobId        String   @map("job_id") @db.Uuid
+  panelCode    String   @map("panel_code")
+  thicknessUm  Decimal  @map("thickness_um") @db.Decimal(8, 2)
+  notes        String?
+  recordedBy   String?  @map("recorded_by") @db.Uuid
+  recordedAt   DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  job UxbJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@map("paint_readings")
+  @@schema("uxp")
+}
+
+/// A physical roll of film or PPF. The stock item lives in inventory (D5);
+/// this tracks the remaining linear metres of the individual roll.
+model UxbMaterialRoll {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  branchId       String   @map("branch_id") @db.Uuid
+  partId         String   @map("part_id") @db.Uuid
+  rollNo         String   @map("roll_no")
+  widthCm        Decimal  @map("width_cm") @db.Decimal(8, 2)
+  initialM       Decimal  @map("initial_m") @db.Decimal(10, 3)
+  remainingM     Decimal  @map("remaining_m") @db.Decimal(10, 3)
+  supplierId     String?  @map("supplier_id") @db.Uuid
+  costPerM       Decimal? @map("cost_per_m") @db.Decimal(14, 4)
+  status         String   @default("open")
+  openedAt       DateTime @default(now()) @map("opened_at") @db.Timestamptz(6)
+
+  part        Part                 @relation(fields: [partId], references: [id])
+  consumption UxbRollConsumption[]
+
+  @@unique([organizationId, rollNo])
+  @@index([partId])
+  @@map("material_rolls")
+  @@schema("uxp")
+}
+
+model UxbRollConsumption {
+  id         String   @id @default(uuid()) @db.Uuid
+  rollId     String   @map("roll_id") @db.Uuid
+  jobItemId  String   @map("job_item_id") @db.Uuid
+  metersUsed Decimal  @map("meters_used") @db.Decimal(10, 3)
+  wasteM     Decimal  @default(0) @map("waste_m") @db.Decimal(10, 3)
+  recordedBy String?  @map("recorded_by") @db.Uuid
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  roll    UxbMaterialRoll @relation(fields: [rollId], references: [id])
+  jobItem UxbJobItem      @relation(fields: [jobItemId], references: [id], onDelete: Cascade)
+
+  @@index([rollId])
+  @@index([jobItemId])
+  @@map("roll_consumption")
+  @@schema("uxp")
+}
+
+// ── Tire Zone ────────────────────────────────────────────────────────────
+// Stock, pricing and movement live in the shared `inventory` schema (D5).
+// These tables carry only what is specific to selling and fitting tires.
+
 model TireProduct {
-  id        String   @id @default(uuid()) @db.Uuid
-  sku       String   @unique
-  nameEn    String   @map("name_en")
-  nameAr    String   @map("name_ar")
-  size      String?
-  brand     String?
-  partId    String?  @map("part_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  /// The inventory item this tire is. Stock is never tracked here.
+  partId         String   @unique @map("part_id") @db.Uuid
+  sku            String   @unique
+  nameEn         String   @map("name_en")
+  nameAr         String   @map("name_ar")
+  brand          String
+  pattern        String?
+  width          Int
+  aspectRatio    Int      @map("aspect_ratio")
+  rimDiameter    Int      @map("rim_diameter")
+  season         String   @default("all_season")
+  speedRating    String?  @map("speed_rating")
+  loadIndex      String?  @map("load_index")
+  runFlat        Boolean  @default(false) @map("run_flat")
+  dotWeek        String?  @map("dot_week")
+  warrantyMonths Int?     @map("warranty_months")
+  warrantyKm     Int?     @map("warranty_km")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  orders TireOrder[]
+  part       Part                 @relation(fields: [partId], references: [id])
+  orderItems TireSalesOrderItem[]
 
+  @@index([width, aspectRatio, rimDiameter])
+  @@index([brand])
   @@map("products")
   @@schema("tireszone")
 }
 
-model TireOrder {
-  id          String   @id @default(uuid()) @db.Uuid
-  productId   String   @map("product_id") @db.Uuid
-  customerId  String?  @map("customer_id") @db.Uuid
-  vehicleId   String?  @map("vehicle_id") @db.Uuid
-  visitId     String?  @map("visit_id") @db.Uuid
-  workOrderId String?  @map("work_order_id") @db.Uuid
-  qty         Int      @default(1)
-  status      String   @default("draft")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+/// Vehicle → tire size mapping. Powers the Tire Finder screen.
+model TireFitment {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  make           String
+  model          String
+  yearFrom       Int      @map("year_from")
+  yearTo         Int?     @map("year_to")
+  width          Int
+  aspectRatio    Int      @map("aspect_ratio")
+  rimDiameter    Int      @map("rim_diameter")
+  position       String   @default("all")
+  isOem          Boolean  @default(true) @map("is_oem")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  product   TireProduct  @relation(fields: [productId], references: [id])
-  customer  Customer?    @relation(fields: [customerId], references: [id])
-  vehicle   Vehicle?     @relation(fields: [vehicleId], references: [id])
-  visit     VehicleVisit? @relation(fields: [visitId], references: [id])
-  workOrder WorkOrder?   @relation(fields: [workOrderId], references: [id])
-
-  @@index([visitId])
-  @@index([customerId])
-  @@index([workOrderId])
-  @@map("orders")
+  @@index([make, model])
+  @@index([width, aspectRatio, rimDiameter])
+  @@map("fitments")
   @@schema("tireszone")
 }
 
-model CafeOrder {
+/// Fitting-bay services: mount, balance, alignment, puncture repair, nitrogen.
+model TireService {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  code           String
+  nameEn         String   @map("name_en")
+  nameAr         String   @map("name_ar")
+  price          Decimal  @db.Decimal(14, 2)
+  durationMin    Int      @default(30) @map("duration_min")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  orderItems TireSalesOrderItem[]
+
+  @@unique([organizationId, code])
+  @@map("services")
+  @@schema("tireszone")
+}
+
+model TireSalesOrder {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  branchId       String    @map("branch_id") @db.Uuid
+  number         String
+  /// pos | workshop_request | online
+  channel        String    @default("pos")
+  status         String    @default("draft")
+  customerId     String?   @map("customer_id") @db.Uuid
+  vehicleId      String?   @map("vehicle_id") @db.Uuid
+  /// Set when Pro Motors raised this from an inspection finding.
+  visitId        String?   @map("visit_id") @db.Uuid
+  workOrderId    String?   @map("work_order_id") @db.Uuid
+  odometer       Int?
+  subtotal       Decimal   @default(0) @db.Decimal(14, 2)
+  discount       Decimal   @default(0) @db.Decimal(14, 2)
+  tax            Decimal   @default(0) @db.Decimal(14, 2)
+  total          Decimal   @default(0) @db.Decimal(14, 2)
+  invoiceId      String?   @map("invoice_id") @db.Uuid
+  notes          String?
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  customer  Customer?            @relation(fields: [customerId], references: [id])
+  vehicle   Vehicle?             @relation(fields: [vehicleId], references: [id])
+  visit     VehicleVisit?        @relation(fields: [visitId], references: [id])
+  workOrder WorkOrder?           @relation(fields: [workOrderId], references: [id])
+  items     TireSalesOrderItem[]
+  alignment TireAlignment?
+
+  @@unique([organizationId, number])
+  @@index([branchId, status])
+  @@index([visitId])
+  @@index([customerId])
+  @@map("sales_orders")
+  @@schema("tireszone")
+}
+
+model TireSalesOrderItem {
   id         String   @id @default(uuid()) @db.Uuid
-  branchId   String   @map("branch_id") @db.Uuid
-  customerId String?  @map("customer_id") @db.Uuid
-  visitId    String?  @map("visit_id") @db.Uuid
-  employeeId String?  @map("employee_id") @db.Uuid
-  total      Decimal  @default(0) @db.Decimal(14, 2)
-  status     String   @default("open")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  orderId    String   @map("order_id") @db.Uuid
+  /// Exactly one of productId / serviceId is set.
+  productId  String?  @map("product_id") @db.Uuid
+  serviceId  String?  @map("service_id") @db.Uuid
+  nameEn     String   @map("name_en")
+  nameAr     String   @map("name_ar")
+  qty        Decimal  @default(1) @db.Decimal(14, 3)
+  unitPrice  Decimal  @map("unit_price") @db.Decimal(14, 2)
+  discount   Decimal  @default(0) @db.Decimal(14, 2)
+  lineTotal  Decimal  @map("line_total") @db.Decimal(14, 2)
+  taxRateId  String?  @map("tax_rate_id") @db.Uuid
+  /// Stock reservation held until the order is completed or cancelled.
+  reservationId String? @map("reservation_id") @db.Uuid
+  sortOrder  Int      @default(0) @map("sort_order")
 
-  customer Customer?     @relation(fields: [customerId], references: [id])
-  visit    VehicleVisit? @relation(fields: [visitId], references: [id])
+  order    TireSalesOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product  TireProduct?      @relation(fields: [productId], references: [id])
+  service  TireService?      @relation(fields: [serviceId], references: [id])
+  warranty TireWarranty?
 
+  @@index([orderId])
+  @@map("sales_order_items")
+  @@schema("tireszone")
+}
+
+model TireWarranty {
+  id          String    @id @default(uuid()) @db.Uuid
+  orderItemId String    @unique @map("order_item_id") @db.Uuid
+  months      Int?
+  kmLimit     Int?      @map("km_limit")
+  startOdometer Int?    @map("start_odometer")
+  startsAt    DateTime  @default(now()) @map("starts_at") @db.Timestamptz(6)
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6)
+  terms       String?
+
+  orderItem TireSalesOrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@map("warranties")
+  @@schema("tireszone")
+}
+
+/// Before/after alignment readings — a strong trust signal for customers.
+model TireAlignment {
+  id           String   @id @default(uuid()) @db.Uuid
+  orderId      String   @unique @map("order_id") @db.Uuid
+  technicianId String?  @map("technician_id") @db.Uuid
+  before       Json?
+  after        Json?
+  notes        String?
+  performedAt  DateTime @default(now()) @map("performed_at") @db.Timestamptz(6)
+
+  order TireSalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("alignments")
+  @@schema("tireszone")
+}
+
+// ── Daily Cup — cafe operations and recipe costing ───────────────────────
+// Ingredients are `inventory.parts` rows in a per-branch cafe warehouse (D5),
+// so purchasing, stock movement and valuation stay in one engine.
+
+model CafeCategory {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  code           String
+  nameEn         String   @map("name_en")
+  nameAr         String   @map("name_ar")
+  sortOrder      Int      @default(0) @map("sort_order")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  products CafeProduct[]
+
+  @@unique([organizationId, code])
+  @@map("categories")
+  @@schema("daily_cafe")
+}
+
+model CafeProduct {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  categoryId     String   @map("category_id") @db.Uuid
+  code           String
+  nameEn         String   @map("name_en")
+  nameAr         String   @map("name_ar")
+  description    String?
+  imageFileId    String?  @map("image_file_id") @db.Uuid
+  isActive       Boolean  @default(true) @map("is_active")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  category CafeCategory         @relation(fields: [categoryId], references: [id])
+  variants CafeProductVariant[]
+
+  @@unique([organizationId, code])
+  @@index([categoryId])
+  @@map("products")
+  @@schema("daily_cafe")
+}
+
+/// A sellable size. Price lives here; cost comes from the linked recipe.
+model CafeProductVariant {
+  id        String   @id @default(uuid()) @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  size      String
+  nameEn    String   @map("name_en")
+  nameAr    String   @map("name_ar")
+  price     Decimal  @db.Decimal(14, 2)
+  recipeId  String?  @map("recipe_id") @db.Uuid
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+
+  product    CafeProduct     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  recipe     CafeRecipe?     @relation(fields: [recipeId], references: [id])
+  orderItems CafeOrderItem[]
+
+  @@unique([productId, size])
+  @@map("product_variants")
+  @@schema("daily_cafe")
+}
+
+/// Extra shot, oat milk, no sugar — may consume stock of its own.
+model CafeModifier {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  code             String
+  nameEn           String   @map("name_en")
+  nameAr           String   @map("name_ar")
+  priceDelta       Decimal  @default(0) @map("price_delta") @db.Decimal(14, 2)
+  ingredientPartId String?  @map("ingredient_part_id") @db.Uuid
+  qty              Decimal? @db.Decimal(14, 4)
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  ingredient Part? @relation(fields: [ingredientPartId], references: [id])
+
+  @@unique([organizationId, code])
+  @@map("modifiers")
+  @@schema("daily_cafe")
+}
+
+/// A bill of materials. Cost per cup is derived from its items.
+model CafeRecipe {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  code           String
+  nameEn         String   @map("name_en")
+  nameAr         String   @map("name_ar")
+  yieldQty       Decimal  @default(1) @map("yield_qty") @db.Decimal(14, 4)
+  yieldUnit      String   @default("unit") @map("yield_unit")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  items    CafeRecipeItem[]
+  variants CafeProductVariant[]
+
+  @@unique([organizationId, code])
+  @@map("recipes")
+  @@schema("daily_cafe")
+}
+
+model CafeRecipeItem {
+  id        String  @id @default(uuid()) @db.Uuid
+  recipeId  String  @map("recipe_id") @db.Uuid
+  partId    String  @map("part_id") @db.Uuid
+  qty       Decimal @db.Decimal(14, 4)
+  unit      String
+  /// Expected loss as a fraction, e.g. 0.02 for 2% grinding loss.
+  wastePct  Decimal @default(0) @map("waste_pct") @db.Decimal(6, 4)
+  sortOrder Int     @default(0) @map("sort_order")
+
+  recipe CafeRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  part   Part       @relation(fields: [partId], references: [id])
+
+  @@unique([recipeId, partId])
+  @@map("recipe_items")
+  @@schema("daily_cafe")
+}
+
+model CafeOrder {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  branchId       String    @map("branch_id") @db.Uuid
+  number         String
+  /// dine_in | takeaway | waiting_area — waiting_area links to a live visit.
+  type           String    @default("takeaway")
+  status         String    @default("open")
+  customerId     String?   @map("customer_id") @db.Uuid
+  visitId        String?   @map("visit_id") @db.Uuid
+  sessionId      String?   @map("session_id") @db.Uuid
+  tableRef       String?   @map("table_ref")
+  subtotal       Decimal   @default(0) @db.Decimal(14, 2)
+  discount       Decimal   @default(0) @db.Decimal(14, 2)
+  tax            Decimal   @default(0) @db.Decimal(14, 2)
+  total          Decimal   @default(0) @db.Decimal(14, 2)
+  costTotal      Decimal   @default(0) @map("cost_total") @db.Decimal(14, 4)
+  invoiceId      String?   @map("invoice_id") @db.Uuid
+  employeeId     String?   @map("employee_id") @db.Uuid
+  readyAt        DateTime? @map("ready_at") @db.Timestamptz(6)
+  closedAt       DateTime? @map("closed_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  customer Customer?        @relation(fields: [customerId], references: [id])
+  visit    VehicleVisit?    @relation(fields: [visitId], references: [id])
+  session  CafeCashSession? @relation(fields: [sessionId], references: [id])
+  items    CafeOrderItem[]
+
+  @@unique([organizationId, number])
+  @@index([branchId, status])
+  @@index([visitId])
   @@map("orders")
+  @@schema("daily_cafe")
+}
+
+model CafeOrderItem {
+  id        String  @id @default(uuid()) @db.Uuid
+  orderId   String  @map("order_id") @db.Uuid
+  variantId String  @map("variant_id") @db.Uuid
+  nameEn    String  @map("name_en")
+  nameAr    String  @map("name_ar")
+  qty       Decimal @default(1) @db.Decimal(14, 3)
+  unitPrice Decimal @map("unit_price") @db.Decimal(14, 2)
+  discount  Decimal @default(0) @db.Decimal(14, 2)
+  lineTotal Decimal @map("line_total") @db.Decimal(14, 2)
+  /// Modifier selections captured at sale time.
+  modifiers Json?
+  /// Ingredient cost frozen at the moment of sale, so historical margin
+  /// reports stay accurate when supplier prices change later.
+  costSnapshot Decimal @default(0) @map("cost_snapshot") @db.Decimal(14, 4)
+  notes     String?
+  sortOrder Int     @default(0) @map("sort_order")
+
+  order   CafeOrder          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant CafeProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([orderId])
+  @@map("order_items")
+  @@schema("daily_cafe")
+}
+
+/// Cashier shift and cash-drawer reconciliation.
+model CafeCashSession {
+  id            String    @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  branchId      String    @map("branch_id") @db.Uuid
+  openedBy      String    @map("opened_by") @db.Uuid
+  closedBy      String?   @map("closed_by") @db.Uuid
+  openingFloat  Decimal   @default(0) @map("opening_float") @db.Decimal(14, 2)
+  expectedCash  Decimal   @default(0) @map("expected_cash") @db.Decimal(14, 2)
+  closingCount  Decimal?  @map("closing_count") @db.Decimal(14, 2)
+  variance      Decimal?  @db.Decimal(14, 2)
+  status        String    @default("open")
+  openedAt      DateTime  @default(now()) @map("opened_at") @db.Timestamptz(6)
+  closedAt      DateTime? @map("closed_at") @db.Timestamptz(6)
+  notes         String?
+
+  orders CafeOrder[]
+
+  @@index([branchId, status])
+  @@map("cash_sessions")
+  @@schema("daily_cafe")
+}
+
+/// Spoilage and breakage — depletes stock and shows up against profit.
+model CafeWasteLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  branchId       String   @map("branch_id") @db.Uuid
+  partId         String   @map("part_id") @db.Uuid
+  qty            Decimal  @db.Decimal(14, 4)
+  unit           String
+  reason         String
+  cost           Decimal  @default(0) @db.Decimal(14, 4)
+  recordedBy     String?  @map("recorded_by") @db.Uuid
+  recordedAt     DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  notes          String?
+
+  part Part @relation(fields: [partId], references: [id])
+
+  @@index([branchId, recordedAt])
+  @@map("waste_logs")
   @@schema("daily_cafe")
 }

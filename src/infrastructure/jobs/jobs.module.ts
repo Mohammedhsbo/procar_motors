@@ -8,6 +8,7 @@ import { InventoryModule } from '../../modules/inventory/inventory.module';
 import { JobLockService } from './job-lock.service';
 import { OutboxDispatcherService } from './outbox-dispatcher.service';
 import { LowStockScanService } from './low-stock-scan.service';
+import { ReminderEngineService } from './reminder-engine.service';
 import {
   OutboxProcessor,
   ScheduledJobsProcessor,
@@ -41,10 +42,16 @@ import { JobsController } from './jobs.controller';
     JobLockService,
     OutboxDispatcherService,
     LowStockScanService,
+    ReminderEngineService,
     OutboxProcessor,
     ScheduledJobsProcessor,
     JobsSchedulerService,
   ],
-  exports: [OutboxDispatcherService, JobsSchedulerService, LowStockScanService],
+  exports: [
+    OutboxDispatcherService,
+    JobsSchedulerService,
+    LowStockScanService,
+    ReminderEngineService,
+  ],
 })
 export class JobsModule {}
